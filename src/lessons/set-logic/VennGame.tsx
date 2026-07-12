@@ -158,12 +158,21 @@ export function VennGame({ level }: { level: number }) {
       setChecked({ ok: false, message: r.message });
       return;
     }
-    const ok = shadingOf(r.expr) === target;
+    let ok: boolean;
+    try {
+      ok = shadingOf(r.expr) === target;
+    } catch (err) {
+      setChecked({
+        ok: false,
+        message: err instanceof Error ? err.message : 'That set cannot be worked out.',
+      });
+      return;
+    }
     setChecked({
       ok,
       message: ok
         ? undefined
-        : `Your ${renderSet(r.expr)} shades different regions. Look at which ones and work backwards.`,
+        : `Your ${renderSet(r.expr)} shades different regions. Look at which ones, and work backwards.`,
     });
     if (ok) award();
   };

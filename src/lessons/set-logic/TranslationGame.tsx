@@ -18,7 +18,7 @@ import { useCallback, useMemo, useState } from 'react';
 import type { Formula, Model } from '../../lib/logic/types';
 import { parseFormula, renderFormula } from '../../lib/logic/parse';
 import { logicEquivalent } from '../../lib/logic/equivalence';
-import { evaluate } from '../../lib/logic/evaluate';
+import { evaluate, freeVars } from '../../lib/logic/evaluate';
 import { NO_SOLVES, checkAdvance, useProgress } from '../../core/progress';
 import { Button, Panel, Verdict } from '../../components/ui';
 import { FormulaStrip, TilePalette, useFormulaTokens } from '../../components/FormulaBuilder';
@@ -225,13 +225,43 @@ export function TranslationGame({ level }: { level: number }) {
     (theirFormula: Formula, because?: string) => {
       if (!puzzle || !reference?.ok) return;
       setAttempts((a) => a + 1);
+
+      // A formula with a loose variable — `x ∈ Dog`, with nothing saying *which*
+      // x — is not a sentence at all. It has no truth value in a world, so there
+      // is nothing to grade, and the engine rightly refuses to guess. The learner
+      // can absolutely build one (the x tile arrives at level 5, the quantifiers
+      // arrive with it), so this is a normal thing to say back to them, not an
+      // error. It gets its own explanation rather than a counter-world, because
+      // no counter-world exists.
+      const loose = [...freeVars(theirFormula)];
+      if (loose.length > 0) {
+        setParseError(
+          `Your sentence mentions ${loose.length > 1 ? 'the things' : 'a thing'} called ` +
+            `${loose.join(' and ')}, but never says which. ` +
+            `Is it true of EVERY thing (∀${loose[0]}), or is there SOME thing it is true of (∃${loose[0]})? ` +
+            `A sentence has to say — otherwise it is not yet a claim about anything.`,
+        );
+        return;
+      }
+
       // Grade at the widest scope this signature can afford. A binary relation is
       // what makes a fourth element expensive (2^(n²) rather than 2^n), so a
       // relation-free puzzle gets the extra element nearly free — and a wider
       // scope means fewer near-miss answers slip through as "correct".
-      const eq = logicEquivalent(theirFormula, reference.formula, puzzle.sig, {
-        maxDomain: puzzle.sig.relations.length === 0 ? 4 : 3,
-      });
+      //
+      // The engine throws rather than guessing when it is handed something it
+      // cannot grade. A thrown exception here would white-screen the lesson, and
+      // a child who typed something odd deserves a sentence, not a blank page.
+      let eq;
+      try {
+        eq = logicEquivalent(theirFormula, reference.formula, puzzle.sig, {
+          maxDomain: puzzle.sig.relations.length === 0 ? 4 : 3,
+        });
+      } catch (err) {
+        setParseError(err instanceof Error ? err.message : 'That sentence cannot be checked.');
+        return;
+      }
+
       if (eq.equal) {
         // They wrote something *different-looking but logically the same*. That
         // is a correct answer, and calling it wrong would be a lie.
@@ -356,7 +386,7 @@ export function TranslationGame({ level }: { level: number }) {
           {/* Feedback. */}
           {parseError && (
             <div className="mt-4">
-              <Verdict ok={false} title="That is not a well-formed sentence yet">
+              <Verdict ok={false} title="Not a sentence yet">
                 {parseError}
               </Verdict>
             </div>
