@@ -9,7 +9,7 @@
  */
 import { Aha, Panel } from '../../components/ui';
 import { Activity, LessonShell } from '../../components/LessonShell';
-import { useProgress } from '../../core/progress';
+import { NO_SOLVES, useProgress } from '../../core/progress';
 import type { Lesson } from '../../core/types';
 import { LADDER, puzzleLevel } from './content';
 import { RESOURCES } from './resources';
@@ -61,7 +61,7 @@ function Hook() {
 }
 
 export function SetLogicPage() {
-  const solved = useProgress((s) => s.lessons['set-logic']?.solved ?? {});
+  const solved = useProgress((s) => s.lessons['set-logic']?.solved ?? NO_SOLVES);
   const solvedAt = (level: number) =>
     Object.keys(solved).filter((id) => puzzleLevel(id) === level || vennLevelOf(id) === level).length;
 

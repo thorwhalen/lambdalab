@@ -22,14 +22,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Automaton, StateId } from '../../lib/automata/types';
 import { parseRegex } from '../../lib/automata/regexParse';
 import { regexToNFA } from '../../lib/automata/thompson';
-import { minimalStateCount } from '../../lib/automata/minimize';
+import { minimize } from '../../lib/automata/minimize';
 import { equivalent } from '../../lib/automata/equivalence';
 import { determinismReport } from '../../lib/automata/simulate';
 import { AutomatonCanvas } from '../../components/AutomatonCanvas';
 import { StringLedger, StringStepper } from '../../components/StringTester';
 import { Button, Panel, Verdict } from '../../components/ui';
 import { Leaderboard, NicknameGate, useLeaderboard } from '../../components/Leaderboard';
-import { checkAdvance, useProgress } from '../../core/progress';
+import { NO_SOLVES, checkAdvance, useProgress } from '../../core/progress';
 import {
   BUILD_BOARD,
   BUILD_PAR,
@@ -85,7 +85,7 @@ export function MachineBuilder({ level }: { level: number }) {
   const [showHint, setShowHint] = useState(false);
 
   const { recordSolve } = useProgress();
-  const solvedMap = useProgress((s) => s.lessons[LESSON_ID]?.solved ?? {});
+  const solvedMap = useProgress((s) => s.lessons[LESSON_ID]?.solved ?? NO_SOLVES);
   const board = useLeaderboard(BUILD_BOARD);
 
   // Levels 1-2 are pure DFA-building; from 5 the NFA puzzles join the pool.
@@ -101,7 +101,16 @@ export function MachineBuilder({ level }: { level: number }) {
     return p.ok ? regexToNFA(p.node) : null;
   }, [puzzle]);
 
-  const par = useMemo(() => (target ? minimalStateCount(target) : 0), [target]);
+  /**
+   * Par is the number of states the learner must actually DRAW.
+   *
+   * `minimalStateCount` counts the trap state, because that is what "how many
+   * states does this language need?" means in Myhill-Nerode terms. But nobody
+   * draws a trap — a missing arrow *is* the trap — so quoting that number sets a
+   * target the learner can never hit, and then beats them up for missing it.
+   * `minimize()` drops the trap for display; that is the honest par.
+   */
+  const par = useMemo(() => (target ? minimize(target).states.length : 0), [target]);
 
   // A new puzzle means a fresh canvas.
   useEffect(() => {

@@ -19,7 +19,7 @@ import type { Formula, Model } from '../../lib/logic/types';
 import { parseFormula, renderFormula } from '../../lib/logic/parse';
 import { logicEquivalent } from '../../lib/logic/equivalence';
 import { evaluate } from '../../lib/logic/evaluate';
-import { checkAdvance, useProgress } from '../../core/progress';
+import { NO_SOLVES, checkAdvance, useProgress } from '../../core/progress';
 import { Button, Panel, Verdict } from '../../components/ui';
 import { FormulaStrip, TilePalette, useFormulaTokens } from '../../components/FormulaBuilder';
 import { LittleWorld } from '../../components/LittleWorld';
@@ -148,6 +148,8 @@ export function TranslationGame({ level }: { level: number }) {
   const [mode, setMode] = useState<Mode>('read');
   const [index, setIndex] = useState(0);
   const [wrong, setWrong] = useState<Wrong | null>(null);
+  /** In READ mode: the option the learner clicked, by its formula source. */
+  const [chosen, setChosen] = useState<string | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [solved, setSolved] = useState(false);
   const [attempts, setAttempts] = useState(0);
@@ -156,7 +158,7 @@ export function TranslationGame({ level }: { level: number }) {
 
   const tokens = useFormulaTokens();
   const { recordSolve } = useProgress();
-  const solvedMap = useProgress((s) => s.lessons[LESSON_ID]?.solved ?? {});
+  const solvedMap = useProgress((s) => s.lessons[LESSON_ID]?.solved ?? NO_SOLVES);
   const board = useLeaderboard(TRANSLATE_BOARD);
 
   const pool = useMemo(() => TRANSLATE_PUZZLES.filter((p) => p.level === level), [level]);
@@ -184,6 +186,7 @@ export function TranslationGame({ level }: { level: number }) {
 
   const reset = useCallback(() => {
     setWrong(null);
+    setChosen(null);
     setParseError(null);
     setSolved(false);
     setAttempts(0);
@@ -222,7 +225,13 @@ export function TranslationGame({ level }: { level: number }) {
     (theirFormula: Formula, because?: string) => {
       if (!puzzle || !reference?.ok) return;
       setAttempts((a) => a + 1);
-      const eq = logicEquivalent(theirFormula, reference.formula, puzzle.sig);
+      // Grade at the widest scope this signature can afford. A binary relation is
+      // what makes a fourth element expensive (2^(n²) rather than 2^n), so a
+      // relation-free puzzle gets the extra element nearly free — and a wider
+      // scope means fewer near-miss answers slip through as "correct".
+      const eq = logicEquivalent(theirFormula, reference.formula, puzzle.sig, {
+        maxDomain: puzzle.sig.relations.length === 0 ? 4 : 3,
+      });
       if (eq.equal) {
         // They wrote something *different-looking but logically the same*. That
         // is a correct answer, and calling it wrong would be a lie.
@@ -291,32 +300,30 @@ export function TranslationGame({ level }: { level: number }) {
               </div>
 
               <div className="flex flex-col gap-2">
-                {options.map((o) => {
-                  const isChosen = wrong && renderFormula(wrong.theirFormula) === renderFormula(parseFormula(o.formal, puzzle.sig).ok ? (parseFormula(o.formal, puzzle.sig) as { ok: true; formula: Formula }).formula : reference.formula);
-                  return (
-                    <button
-                      key={o.formal}
-                      disabled={solved}
-                      onClick={() => {
-                        const p = parseFormula(o.formal, puzzle.sig);
-                        if (!p.ok) return;
-                        if (o.correct) succeed();
-                        else fail(p.formula, o.because);
-                      }}
-                      className={`rounded-xl border px-4 py-3 text-left text-ink-200 transition
-                        disabled:cursor-not-allowed
-                        ${
-                          solved && o.correct
-                            ? 'border-[var(--color-good)]/60 bg-[var(--color-good)]/12'
-                            : isChosen
-                              ? 'border-[var(--color-bad)]/60 bg-[var(--color-bad)]/10'
-                              : 'border-ink-700 hover:border-lam-500/60 hover:bg-ink-800/60'
-                        }`}
-                    >
-                      {o.english}
-                    </button>
-                  );
-                })}
+                {options.map((o) => (
+                  <button
+                    key={o.formal}
+                    disabled={solved}
+                    onClick={() => {
+                      const p = parseFormula(o.formal, puzzle.sig);
+                      if (!p.ok) return;
+                      setChosen(o.formal);
+                      if (o.correct) succeed();
+                      else fail(p.formula, o.because);
+                    }}
+                    className={`rounded-xl border px-4 py-3 text-left text-ink-200 transition
+                      disabled:cursor-not-allowed
+                      ${
+                        solved && o.correct
+                          ? 'border-[var(--color-good)]/60 bg-[var(--color-good)]/12'
+                          : chosen === o.formal && wrong
+                            ? 'border-[var(--color-bad)]/60 bg-[var(--color-bad)]/10'
+                            : 'border-ink-700 hover:border-lam-500/60 hover:bg-ink-800/60'
+                      }`}
+                  >
+                    {o.english}
+                  </button>
+                ))}
               </div>
             </>
           ) : (
@@ -371,6 +378,7 @@ export function TranslationGame({ level }: { level: number }) {
                 <Button
                   onClick={() => {
                     setWrong(null);
+                    setChosen(null);
                     if (mode === 'write') tokens.clear();
                   }}
                 >

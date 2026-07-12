@@ -20,7 +20,7 @@ import { Button, Panel, Verdict } from '../../components/ui';
 import { TilePalette, FormulaStrip, useFormulaTokens } from '../../components/FormulaBuilder';
 import { VennPlayground, shadingOf, type Shading } from '../../components/VennPlayground';
 import { Leaderboard, NicknameGate, useLeaderboard } from '../../components/Leaderboard';
-import { useProgress } from '../../core/progress';
+import { NO_SOLVES, useProgress } from '../../core/progress';
 import { VENN_BOARD, VENN_PAR, paletteFor } from './content';
 
 const LESSON_ID = 'set-logic';
@@ -105,7 +105,7 @@ export function VennGame({ level }: { level: number }) {
   const [checked, setChecked] = useState<{ ok: boolean; message?: string } | null>(null);
   const tokens = useFormulaTokens();
   const { recordSolve } = useProgress();
-  const solvedMap = useProgress((s) => s.lessons[LESSON_ID]?.solved ?? {});
+  const solvedMap = useProgress((s) => s.lessons[LESSON_ID]?.solved ?? NO_SOLVES);
   const board = useLeaderboard(VENN_BOARD);
 
   const pool = useMemo(() => VENN_PUZZLES.filter((p) => p.level <= level), [level]);
@@ -246,8 +246,13 @@ export function VennGame({ level }: { level: number }) {
                   </div>
                   <div className="rounded-xl border border-ink-700 bg-ink-900/50 p-3">
                     <TilePalette
+                      // Set-expression tiles only: no connectives, no quantifiers,
+                      // and only round brackets (the set-builder braces belong to
+                      // the formula game, not here).
                       tiles={paletteFor(SIG, Math.max(3, level)).filter(
-                        (t) => t.kind === 'set' || t.kind === 'paren' || ['∩', '∪', 'ᶜ', '∖', '∅', '𝕌'].includes(t.token),
+                        (t) =>
+                          t.kind === 'set' ||
+                          ['(', ')', '∩', '∪', 'ᶜ', '∖', '∅', '𝕌'].includes(t.token),
                       )}
                       level={Math.max(3, level)}
                       onPick={(t) => {

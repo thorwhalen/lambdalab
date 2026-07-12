@@ -9,7 +9,7 @@
  */
 import { Aha, Panel } from '../../components/ui';
 import { Activity, LessonShell } from '../../components/LessonShell';
-import { useProgress } from '../../core/progress';
+import { NO_SOLVES, useProgress } from '../../core/progress';
 import type { Lesson } from '../../core/types';
 import { LADDER, LANGUAGE_PUZZLES, puzzleLevel } from './content';
 import { RESOURCES } from './resources';
@@ -56,7 +56,7 @@ function Hook() {
 }
 
 export function AutomataPage() {
-  const solved = useProgress((s) => s.lessons['automata-regex']?.solved ?? {});
+  const solved = useProgress((s) => s.lessons['automata-regex']?.solved ?? NO_SOLVES);
 
   // Regex solves are keyed `re-<id>`; both count toward the rung they belong to.
   const solvedAt = (level: number) =>

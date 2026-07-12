@@ -33,6 +33,16 @@ function mustParse(src: string, sig: Signature, what: string): Formula {
   return r.formula;
 }
 
+/**
+ * Check at the widest scope we can afford. A binary relation costs 2^(n²) models
+ * per relation, so it is what makes domain 4 expensive; without one, the extra
+ * element is nearly free — and a wider scope catches more authoring mistakes.
+ * (`logic/equivalence.ts` recommends exactly this.)
+ */
+const scopeFor = (sig: Signature) => ({ maxDomain: sig.relations.length === 0 ? 4 : 3 });
+
+const equiv = (a: Formula, b: Formula, sig: Signature) => logicEquivalent(a, b, sig, scopeFor(sig));
+
 describe('set-logic puzzle bank', () => {
   it('has puzzles at every level of the ladder', () => {
     const levels = new Set(TRANSLATE_PUZZLES.map((p) => p.level));
@@ -66,7 +76,7 @@ describe('set-logic puzzle bank', () => {
         const ref = mustParse(p.formal, p.sig, 'reference');
         for (const d of p.distractors) {
           const alt = mustParse(d.formal, p.sig, 'distractor');
-          const eq = logicEquivalent(alt, ref, p.sig);
+          const eq = equiv(alt, ref, p.sig);
           expect(
             eq.equal,
             `distractor "${d.formal}" is LOGICALLY EQUIVALENT to the answer "${p.formal}" — ` +
@@ -80,7 +90,7 @@ describe('set-logic puzzle bank', () => {
           for (let j = i + 1; j < p.distractors.length; j++) {
             const a = mustParse(p.distractors[i].formal, p.sig, 'distractor');
             const b = mustParse(p.distractors[j].formal, p.sig, 'distractor');
-            const eq = logicEquivalent(a, b, p.sig);
+            const eq = equiv(a, b, p.sig);
             expect(
               eq.equal,
               `distractors ${i} and ${j} are equivalent: "${p.distractors[i].formal}" ≡ "${p.distractors[j].formal}"`,
@@ -92,14 +102,12 @@ describe('set-logic puzzle bank', () => {
       it('the answer says something (is neither always-true nor always-false)', () => {
         if (ALLOWED_TRIVIAL.has(p.id)) return;
         const ref = mustParse(p.formal, p.sig, 'reference');
-        const alwaysTrue = mustParse('¬ ( ∅ = ∅ )', { sets: [], relations: [], constants: [] }, 'x');
-        // Cheaper and clearer than building ⊤/⊥: a formula that says something
-        // must disagree with BOTH the always-true and the always-false formula.
-        void alwaysTrue;
+        // A formula that says something must disagree with BOTH the always-true
+        // and the always-false formula somewhere.
         const T: Formula = { kind: 'true' };
         const F: Formula = { kind: 'false' };
-        expect(logicEquivalent(ref, T, p.sig).equal, `${p.id} is a tautology`).toBe(false);
-        expect(logicEquivalent(ref, F, p.sig).equal, `${p.id} is a contradiction`).toBe(false);
+        expect(equiv(ref, T, p.sig).equal, `${p.id} is a tautology`).toBe(false);
+        expect(equiv(ref, F, p.sig).equal, `${p.id} is a contradiction`).toBe(false);
       });
 
       it('every token in the answer is available in the palette at this level', () => {

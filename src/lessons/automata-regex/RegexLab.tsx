@@ -22,7 +22,7 @@ import { accepts } from '../../lib/automata/simulate';
 import { AutomatonCanvas } from '../../components/AutomatonCanvas';
 import { Button, Panel, Verdict } from '../../components/ui';
 import { Leaderboard, NicknameGate, useLeaderboard } from '../../components/Leaderboard';
-import { checkAdvance, useProgress } from '../../core/progress';
+import { NO_SOLVES, checkAdvance, useProgress } from '../../core/progress';
 import {
   LADDER,
   LANGUAGE_PUZZLES,
@@ -57,7 +57,7 @@ export function RegexLab({ level }: { level: number }) {
   const [unlocked, setUnlocked] = useState<number | null>(null);
 
   const { recordSolve } = useProgress();
-  const solvedMap = useProgress((s) => s.lessons[LESSON_ID]?.solved ?? {});
+  const solvedMap = useProgress((s) => s.lessons[LESSON_ID]?.solved ?? NO_SOLVES);
   const board = useLeaderboard(REGEX_BOARD);
 
   const pool = useMemo(

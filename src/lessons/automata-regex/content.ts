@@ -175,7 +175,9 @@ export const LANGUAGE_PUZZLES: LanguagePuzzle[] = [
     level: 2,
     prompt: 'Accept strings with an EVEN number of "a"s. (Zero counts as even.)',
     alphabet: AB,
-    regex: '(b*ab*ab*)*',
+    // NOT (b*ab*ab*)* — that cannot match a lone "b", because the outer star can
+    // only contribute in whole a-pairs. The leading b* is doing real work.
+    regex: 'b*(ab*ab*)*',
     accept: ['', 'b', 'aa', 'aba', 'bbb', 'aabb', 'baab'],
     reject: ['a', 'ab', 'ba', 'aaa', 'abb'],
     hint: 'You do not need to count the a\'s. You only need to remember ONE bit: is the count so far odd or even?',
@@ -340,8 +342,10 @@ export const LANGUAGE_PUZZLES: LanguagePuzzle[] = [
     prompt: 'Accept strings that contain "aba" or contain "bb".',
     alphabet: AB,
     regex: '(a|b)*(aba|bb)(a|b)*',
-    accept: ['aba', 'bb', 'aabab', 'abb', 'babab', 'bbb'],
-    reject: ['', 'a', 'b', 'ab', 'ba', 'aab', 'abab'],
+    // "abab" contains "aba" (at index 0), so it is ACCEPTED — it was in the reject
+    // list until the content test pointed and laughed.
+    accept: ['aba', 'bb', 'abab', 'aabab', 'abb', 'babab', 'bbb'],
+    reject: ['', 'a', 'b', 'ab', 'ba', 'aab', 'baa', 'baab'],
     hint: 'With an NFA you can just build one machine for each pattern and let a free ε-move at the start choose between them.',
   },
   {

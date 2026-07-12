@@ -14,9 +14,20 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { LessonProgress, Progress } from './types';
+import type { LessonProgress, Progress, PuzzleRecord } from './types';
 
 const STORAGE_KEY = 'lambdalab.progress.v1';
+
+/**
+ * A stable empty map for "this lesson has no solves yet".
+ *
+ * Selectors MUST return this rather than a fresh `{}`. zustand v5 compares
+ * snapshots by reference, so `useProgress((s) => s.lessons[id]?.solved ?? {})`
+ * hands back a new object on every render, the store concludes the state changed,
+ * and the component re-renders forever. Frozen so a caller cannot mutate the
+ * shared instance and quietly poison every other lesson.
+ */
+export const NO_SOLVES: Readonly<Record<string, PuzzleRecord>> = Object.freeze({});
 
 const emptyLesson = (): LessonProgress => ({
   levelReached: 1,
