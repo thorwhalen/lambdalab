@@ -194,6 +194,8 @@ export interface TranslatePuzzle extends PuzzleBase {
   distractors: Distractor[];
   /** The misconception this puzzle exists to provoke, if any. */
   trap?: string;
+  /** A remark worth making once they have got it. Shown on success. */
+  note?: string;
 }
 
 const CREATURES: Signature = { sets: ['Dog', 'Red'], relations: [], constants: [] };
@@ -203,7 +205,10 @@ const CREATURES_NOUNS = {
 };
 
 const REX: Signature = { sets: ['Dog', 'Red'], relations: [], constants: ['rex'] };
-const THREE: Signature = { sets: ['A', 'B', 'C'], relations: [], constants: [] };
+// `rex` must be declared here too — without it, `rex` in a formula parses as a
+// free VARIABLE, and an open formula has no truth value in a world at all. The
+// content test caught exactly this; it is an easy and completely silent mistake.
+const THREE: Signature = { sets: ['A', 'B', 'C'], relations: [], constants: ['rex'] };
 const FRIENDS: Signature = { sets: ['Kid'], relations: ['Likes'], constants: ['sam'] };
 const PETS: Signature = { sets: ['Cat', 'Fluffy'], relations: [], constants: ['mo'] };
 
@@ -317,10 +322,11 @@ export const TRANSLATE_PUZZLES: TranslatePuzzle[] = [
     sig: REX,
     nouns: CREATURES_NOUNS,
     distractors: [
-      { formal: '¬ ( rex ∈ Dog ∧ rex ∈ Red )', english: 'It is not the case that Rex is both a dog and red.', because: '"Neither" is much stronger: it rules out both individually.' },
-      { formal: 'rex ∉ Dog ∨ rex ∉ Red', english: 'Rex is not a dog, or Rex is not red.', because: '"Nor" means BOTH denials hold, not just one.' },
+      { formal: '¬ ( rex ∈ Dog ∧ rex ∈ Red )', english: 'It is not the case that Rex is both a dog and red.', because: '"Neither" is much stronger: it rules out both individually. This one still lets Rex be a (non-red) dog.' },
+      { formal: 'rex ∈ Dog ∧ rex ∉ Red', english: 'Rex is a dog, but Rex is not red.', because: 'Only half the denial — and it positively asserts that Rex IS a dog, which "neither" flatly denies.' },
     ],
     trap: 'neither-nor',
+    hint: 'Careful with the other spelling: ¬(Rex ∈ Dog ∨ Rex ∈ Red) is also correct — that is De Morgan\'s other law. Both say "neither".',
   },
 
   // --- Level 3: set operations --------------------------------------------
@@ -371,10 +377,11 @@ export const TRANSLATE_PUZZLES: TranslatePuzzle[] = [
     formal: 'rex ∈ ( A ∪ B )ᶜ',
     sig: THREE,
     distractors: [
-      { formal: 'rex ∈ ( A ∩ B )ᶜ', english: 'Rex is not in both A and B.', because: 'De Morgan again, in set clothing: (A∪B)ᶜ = Aᶜ∩Bᶜ, but (A∩B)ᶜ = Aᶜ∪Bᶜ — a much weaker claim.' },
-      { formal: 'rex ∈ ( Aᶜ ∪ Bᶜ )', english: 'Rex is outside A, or outside B.', because: 'Same slip: "outside both" is an ∩ of complements, not a ∪.' },
+      { formal: 'rex ∈ ( Aᶜ ∪ Bᶜ )', english: 'Rex is outside A, or outside B.', because: 'The De Morgan slip in set clothing. "Outside both" is an ∩ of complements, not a ∪. (And note (A∩B)ᶜ = Aᶜ∪Bᶜ says exactly this same weaker thing.)' },
+      { formal: 'rex ∈ ( Aᶜ ∩ B )', english: 'Rex is outside A but inside B.', because: 'Only half of it — and it puts Rex firmly inside B, which is the opposite of what was asked.' },
     ],
     trap: 'de-morgan-sets',
+    hint: 'Shade it on a Venn diagram if you are stuck. (A ∪ B)ᶜ is everything outside both circles.',
   },
   {
     id: 't3-empty',
@@ -384,9 +391,10 @@ export const TRANSLATE_PUZZLES: TranslatePuzzle[] = [
     formal: 'rex ∈ ∅',
     sig: THREE,
     distractors: [
-      { formal: 'rex ∈ 𝕌', english: 'Rex is in the universe.', because: '𝕌 holds everything; ∅ holds nothing. They are opposites.' },
-      { formal: 'rex ∉ ∅', english: 'Rex is not in the empty set.', because: 'This one is always TRUE — nothing is in ∅. We asked for the always-false one.' },
+      { formal: 'rex ∈ 𝕌', english: 'Rex is in the universe.', because: '𝕌 holds everything, so this is always TRUE. ∅ holds nothing, so the answer is always FALSE. They are exact opposites.' },
+      { formal: 'rex ∈ A', english: 'Rex is in A.', because: 'That might be true or false depending on the world. "Rex ∈ ∅" is false in every world there is.' },
     ],
+    note: 'Notice: this sentence is FALSE in every possible world. That is a strange and useful thing for a sentence to be.',
   },
 
   // --- Level 4: implication — THE trap -------------------------------------
@@ -456,11 +464,12 @@ export const TRANSLATE_PUZZLES: TranslatePuzzle[] = [
     sig: REX,
     nouns: CREATURES_NOUNS,
     distractors: [
-      { formal: 'rex ∉ Dog → rex ∉ Red', english: 'If Rex is not a dog then Rex is not red.', because: 'Negating both sides is fine — but you must ALSO flip the arrow. Negate-and-flip is the contrapositive, and it is equivalent to the original. Negate-without-flipping is the inverse, and it is not.' },
-      { formal: 'rex ∈ Red → rex ∈ Dog', english: 'If Rex is red then Rex is a dog.', because: 'That is the converse of the negation — a different claim again.' },
+      { formal: 'rex ∉ Dog → rex ∉ Red', english: 'If Rex is not a dog then Rex is not red.', because: 'Negating both sides is fine — but you must ALSO flip the arrow. Negate-and-flip gives the contrapositive, which really is the same sentence. Negate-without-flipping gives the inverse, which is not.' },
+      { formal: 'rex ∉ Red ∧ rex ∉ Dog', english: 'Rex is not red and Rex is not a dog.', because: 'An "if…then" does not assert either half. This one asserts both.' },
     ],
     trap: 'contrapositive',
     hint: 'Try to find a world where "if not red then not a dog" is true but "if a dog then red" is false. You will not manage it — they are the same sentence in disguise.',
+    note: 'You have just met the contrapositive: P → Q and ¬Q → ¬P are the very same claim. It is the single most useful equivalence in mathematics, because sometimes one direction is far easier to prove than the other.',
   },
 
   // --- Level 5: quantifiers ------------------------------------------------
@@ -499,8 +508,8 @@ export const TRANSLATE_PUZZLES: TranslatePuzzle[] = [
     sig: CREATURES,
     nouns: CREATURES_NOUNS,
     distractors: [
-      { formal: '∃ x ( x ∉ Red )', english: 'Something is not red.', because: 'A world with one red apple and one blue one makes this true and "nothing is red" false. Moving the ¬ across the ∃ is not free — it flips the quantifier too.' },
-      { formal: '¬ ∀ x ( x ∈ Red )', english: 'Not everything is red.', because: 'Same slip. ¬∀ is "not all"; ¬∃ is "none". Those are very different.' },
+      { formal: '∃ x ( x ∉ Red )', english: 'Something is not red.', because: 'A world with one red apple and one blue one makes this true and "nothing is red" false. ¬∀ is "not all"; ¬∃ is "none". Very different.' },
+      { formal: '∀ x ( x ∈ Red )', english: 'Everything is red.', because: 'The exact opposite of what was asked.' },
     ],
     trap: 'negating-quantifiers',
     hint: '¬∃x P(x) is the same as ∀x ¬P(x). The ¬ can cross the quantifier, but the quantifier flips as it does.',
@@ -514,8 +523,8 @@ export const TRANSLATE_PUZZLES: TranslatePuzzle[] = [
     sig: CREATURES,
     nouns: CREATURES_NOUNS,
     distractors: [
-      { formal: '¬ ∃ x ( x ∈ Red )', english: 'Nothing is red.', because: '"Not all" is a whisper. "None" is a shout.' },
-      { formal: '∀ x ( x ∉ Red )', english: 'Every thing is not red.', because: 'Same shout, said differently.' },
+      { formal: '¬ ∃ x ( x ∈ Red )', english: 'Nothing is red.', because: '"Not all" is a whisper. "None" is a shout. (And ∀x (x ∉ Red) is the same shout, said differently.)' },
+      { formal: '∃ x ( x ∈ Red )', english: 'Something is red.', because: 'A different claim entirely — and one that can happily be true at the same time as the answer.' },
     ],
     trap: 'negating-quantifiers',
   },
@@ -578,8 +587,8 @@ export const TRANSLATE_PUZZLES: TranslatePuzzle[] = [
     sig: CREATURES,
     nouns: CREATURES_NOUNS,
     distractors: [
-      { formal: '∃ x ( x ∈ Dog ∧ x ∉ Red )', english: 'Some dog is not red.', because: '"No dog is red" bans ALL red dogs. "Some dog is not red" only reports one non-red dog — there could be a red one too.' },
-      { formal: '¬ ∀ x ( x ∈ Dog → x ∈ Red )', english: 'Not every dog is red.', because: 'Again: "none" versus "not all".' },
+      { formal: '∃ x ( x ∈ Dog ∧ x ∉ Red )', english: 'Some dog is not red.', because: '"No dog is red" bans ALL red dogs. "Some dog is not red" only reports one non-red dog — there could be a red one standing right next to it. (And "not every dog is red" says exactly this same weaker thing.)' },
+      { formal: '∀ x ( x ∈ Dog → x ∈ Red )', english: 'Every dog is red.', because: 'The opposite claim — in a world with any dogs at all, these two cannot both be true.' },
     ],
     trap: 'none-vs-not-all',
   },
@@ -677,8 +686,8 @@ export const TRANSLATE_PUZZLES: TranslatePuzzle[] = [
     formal: '¬ ∃ x ( x ∈ Kid ∧ Likes ( x , x ) )',
     sig: FRIENDS,
     distractors: [
-      { formal: '∃ x ( x ∈ Kid ∧ ¬ Likes ( x , x ) )', english: 'Some kid does not like themselves.', because: '"None" versus "at least one not" — the distinction that will not go away.' },
-      { formal: '¬ ∀ x ( x ∈ Kid → Likes ( x , x ) )', english: 'Not every kid likes themselves.', because: 'Same distinction.' },
+      { formal: '∃ x ( x ∈ Kid ∧ ¬ Likes ( x , x ) )', english: 'Some kid does not like themselves.', because: '"None" versus "at least one not" — the distinction that will not go away. (It is also exactly what "not every kid likes themselves" says.)' },
+      { formal: '∀ x ( x ∈ Kid → Likes ( x , x ) )', english: 'Every kid likes themselves.', because: 'The opposite. A nicer world, but not the one described.' },
     ],
     trap: 'none-vs-not-all',
   },
