@@ -1,0 +1,162 @@
+@import 'tailwindcss';
+
+/**
+ * LambdaLab design tokens.
+ *
+ * The look: a dark mathematician's notebook. Deep ink background, paper-white
+ * symbols, one saturated accent per unit so the course map reads as a map. It
+ * should feel like a serious instrument that happens to be fun — not like
+ * software that is worried you might be bored.
+ */
+@theme {
+  --color-ink-950: #080a12;
+  --color-ink-900: #0d1020;
+  --color-ink-850: #12162a;
+  --color-ink-800: #181d35;
+  --color-ink-700: #232a4a;
+  --color-ink-600: #333c63;
+  --color-ink-500: #4d5788;
+  --color-ink-400: #7681ad;
+  --color-ink-300: #a3accd;
+  --color-ink-200: #ccd2e6;
+  --color-ink-100: #e8ebf5;
+
+  /* Unit accents. */
+  --color-lam-500: #7c5cff; /* foundations — violet */
+  --color-lam-400: #9b83ff;
+  --color-mach-500: #00c2a8; /* machines — teal */
+  --color-mach-400: #3ddbc4;
+  --color-crypt-500: #ff6b9d; /* secrets — pink */
+  --color-crypt-400: #ff92b8;
+  --color-info-500: #ffb638; /* information — amber */
+  --color-info-400: #ffcb6b;
+  --color-hard-500: #ff5f56; /* limits — red */
+  --color-hard-400: #ff8a84;
+
+  --color-good: #46d38a;
+  --color-bad: #ff5f56;
+
+  --font-sans: 'Inter var', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+  /* Symbols like ∀ ∃ ∈ ⊆ ε render best in a serif with real maths coverage. */
+  --font-math: 'STIX Two Math', 'Cambria Math', 'Latin Modern Math', 'DejaVu Serif', Georgia, serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(1100px 700px at 15% -10%, color-mix(in srgb, var(--color-lam-500) 14%, transparent), transparent 60%),
+    radial-gradient(900px 600px at 90% 0%, color-mix(in srgb, var(--color-mach-500) 9%, transparent), transparent 55%),
+    var(--color-ink-950);
+  color: var(--color-ink-200);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The faint graph-paper grid behind everything. It reads as "notebook". */
+.grid-paper {
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--color-ink-500) 8%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--color-ink-500) 8%, transparent) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.math {
+  font-family: var(--font-math);
+  font-feature-settings: 'ss01';
+}
+
+/* A formula the learner is reading or building. Big, spaced, legible. */
+.formula {
+  font-family: var(--font-math);
+  font-size: 1.6rem;
+  letter-spacing: 0.04em;
+  line-height: 1.7;
+}
+
+@media (max-width: 640px) {
+  .formula {
+    font-size: 1.25rem;
+  }
+}
+
+/* Panels */
+.panel {
+  background: color-mix(in srgb, var(--color-ink-850) 82%, transparent);
+  border: 1px solid var(--color-ink-700);
+  border-radius: 1rem;
+  backdrop-filter: blur(6px);
+}
+
+/* Tiles the learner clicks to build a formula. */
+.tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.75rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--color-ink-600);
+  background: linear-gradient(180deg, var(--color-ink-750, #1b2140), var(--color-ink-800));
+  color: var(--color-ink-100);
+  font-family: var(--font-math);
+  font-size: 1.15rem;
+  cursor: pointer;
+  transition:
+    transform 90ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
+  user-select: none;
+}
+.tile:hover {
+  border-color: var(--color-lam-400);
+  transform: translateY(-1px);
+}
+.tile:active {
+  transform: translateY(0) scale(0.97);
+}
+.tile[data-fresh='true'] {
+  animation: tile-arrive 700ms ease-out;
+  border-color: var(--color-lam-400);
+}
+
+@keyframes tile-arrive {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-lam-500) 60%, transparent);
+  }
+  60% {
+    box-shadow: 0 0 0 10px transparent;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Reduced motion: keep the meaning, drop the movement. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-lam-500) 40%, transparent);
+}
+
+/* Scrollbars — dark, unobtrusive. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-ink-600) transparent;
+}

@@ -1,0 +1,17 @@
+# LambdaLab — interactive lessons in the theory of computation.
+#
+# Frontend: Vite/React SPA, built to `frontend/`, mounted by enlace at /lambdalab/.
+# Backend:  server.py (FastAPI) → mounted at /api/lambdalab/. Serves the
+#           nickname-only challenge leaderboards. No accounts, no personal data.
+display_name = "LambdaLab"
+description = "The theory of computation, for curious minds."
+access = "public"
+
+frontend_dir = "frontend"
+
+# Build step honoured by tw_platform/deploy.py. VITE_PUBLIC_BASE is injected as
+# "/lambdalab/" so the emitted index.html references assets under the right prefix.
+[build]
+install  = ["npm", "ci", "--no-audit", "--no-fund", "--no-progress"]
+build    = ["npm", "run", "build:fast"]
+env_vars = ["VITE_PUBLIC_BASE"]
