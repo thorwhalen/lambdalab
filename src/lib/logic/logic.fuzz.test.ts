@@ -37,7 +37,7 @@ import { describe, expect, it } from 'vitest';
 
 import { gloss } from './english';
 import { isTautology, logicEquivalent, satisfiable } from './equivalence';
-import { evaluate, freeVars } from './evaluate';
+import { evalSet, evaluate, freeVars } from './evaluate';
 import { DOMAIN_NAMES, enumerateModels, modelCount } from './models';
 import { parseFormula, renderFormula, renderSet, tokenizeLogic } from './parse';
 import type { Formula, Model, SetExpr, Signature, Term } from './types';
@@ -501,8 +501,8 @@ function P(src: string, sig: Signature = SIG): Formula {
 // ---------------------------------------------------------------------------
 
 describe('parse ∘ render = id (the contract parse.ts states in its docstring)', () => {
-  const ROUND_TRIP_CASES = 4000;
-  const MAX_DEPTH = 4;
+  const ROUND_TRIP_CASES = 12000;
+  const MAX_DEPTH = 5;
 
   it('round-trips every randomly generated formula, structurally', () => {
     const rng = makeRng(0xc0ffee);
@@ -1089,6 +1089,114 @@ describe('modelCount is the number of models actually enumerated', () => {
     const first = [...enumerateModels({ sets: ['A'], relations: [], constants: [] }, 2)];
     expect(first.map((m) => m.sets.A)).toEqual([[], ['a'], ['b'], ['a', 'b']]);
   });
+
+  // The docstring of models.ts makes three exact promises about the ORDER. The order
+  // is observable — it picks the counterexample the child is shown — so each promise
+  // is pinned here rather than trusted. A regression in any of them means a learner
+  // gets a needlessly complicated world.
+
+  it('promise 1: a set mask is visited in popcount-then-value order', () => {
+    const ms = [...enumerateModels({ sets: ['A'], relations: [], constants: [] }, 3)];
+    expect(ms.map((m) => m.sets.A)).toEqual([
+      [], ['a'], ['b'], ['c'], ['a', 'b'], ['a', 'c'], ['b', 'c'], ['a', 'b', 'c'],
+    ]);
+  });
+
+  it('promise 2: a relation mask is row-major (bit i·n+j == the pair (dᵢ, dⱼ)), same walk', () => {
+    const ms = [...enumerateModels({ sets: [], relations: ['R'], constants: [] }, 2)];
+    // Empty first, then each single pair in row-major bit order, then the pairs.
+    expect(ms.slice(0, 5).map((m) => m.relations.R)).toEqual([
+      [],
+      [['a', 'a']],
+      [['a', 'b']],
+      [['b', 'a']],
+      [['b', 'b']],
+    ]);
+    expect(ms[5].relations.R).toEqual([['a', 'a'], ['a', 'b']]);
+    expect(ms[ms.length - 1].relations.R).toEqual([
+      ['a', 'a'], ['a', 'b'], ['b', 'a'], ['b', 'b'],
+    ]);
+  });
+
+  it('promise 3: the LAST coordinate turns fastest (constants tick over before sets)', () => {
+    const ms = [...enumerateModels({ sets: ['A'], relations: [], constants: ['c'] }, 2)];
+    expect(ms.map((m) => [m.sets.A, m.constants.c])).toEqual([
+      [[], 'a'], [[], 'b'],
+      [['a'], 'a'], [['a'], 'b'],
+      [['b'], 'a'], [['b'], 'b'],
+      [['a', 'b'], 'a'], [['a', 'b'], 'b'],
+    ]);
+  });
+
+  it('the very first model of any signature is the emptiest one', () => {
+    const sig: Signature = { sets: ['B', 'A'], relations: ['R'], constants: ['c'] };
+    const first = enumerateModels(sig, 3).next().value as Model;
+    expect(first.sets).toEqual({ A: [], B: [] });
+    expect(first.relations).toEqual({ R: [] });
+    expect(first.constants).toEqual({ c: 'a' });
+    // Sets before relations before constants, each group sorted — so JSON.stringify
+    // of a model is canonical and the UI can diff on it.
+    expect(Object.keys(first.sets)).toEqual(['A', 'B']);
+  });
+
+  it('the model-count budget is a tripwire: a big search is refused, not run slowly', () => {
+    const big: Signature = { sets: ['A', 'B'], relations: ['R'], constants: ['c'] };
+    expect(() => logicEquivalent(P('∀x A(x)', big), P('∃x R(x, x)', big), big, { maxDomain: 4 })).toThrow(
+      /Refusing to check/,
+    );
+    // ...but the same scope is affordable once the relation is gone.
+    expect(logicEquivalent(P('∀x A(x)'), P('∀x B(x)'), SIG_NO_REL, { maxDomain: 4 }).equal).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7b. Canonical output — the UI diffs on these, so they are contracts
+// ---------------------------------------------------------------------------
+
+describe('output is canonical: the same facts always produce the same bytes', () => {
+  /** The set expression on the right of `c ∈ …`. Lets a fixture name a SetExpr in source syntax. */
+  const setOfMember = (src: string): SetExpr => {
+    const f = P(src);
+    if (f.kind !== 'member') throw new Error(`fixture is not a membership: ${src}`);
+    return f.set;
+  };
+
+  it('evalSet iterates in sorted element order, whatever shape the model or expression had', () => {
+    // Domain deliberately out of order, membership lists deliberately out of order.
+    const messy: Model = {
+      domain: ['c', 'a', 'b'],
+      sets: { A: ['b', 'a'], B: ['c', 'b'] },
+      relations: { R: [] },
+      constants: { c: 'a' },
+    };
+    // Two different expressions denoting the same set must return byte-identical Sets.
+    const viaCompl = evalSet(setOfMember('c ∈ Aᶜ ∩ B'), messy);
+    const viaDiff = evalSet(setOfMember('c ∈ B ∖ A'), messy);
+    expect([...viaCompl]).toEqual([...viaDiff]);
+    // Sorted; and the complement is relative to the DOMAIN, not to some absolute universe.
+    expect([...viaCompl]).toEqual(['c']);
+
+    // The universe is the domain, in sorted order, regardless of how m.domain was typed.
+    expect([...evalSet(setOfMember('c ∈ 𝕌'), messy)]).toEqual(['a', 'b', 'c']);
+    expect([...evalSet(setOfMember('c ∈ A ∪ B'), messy)]).toEqual(['a', 'b', 'c']);
+  });
+
+  it('tokenizeLogic is idempotent — a tile array and a string reach the same parser', () => {
+    const rng = makeRng(0x70ce);
+    for (let i = 0; i < 800; i += 1) {
+      const text = renderFormula(genOpen(rng, 3, WITH_REL));
+      const once = tokenizeLogic(text);
+      const twice = once.flatMap((t) => tokenizeLogic(t));
+      expect(twice, `not idempotent on: ${text}`).toEqual(once);
+    }
+  });
+
+  it('ᶜ never glues itself onto a set name (the invisible tokenizer bug)', () => {
+    expect(tokenizeLogic('Aᶜ')).toEqual(['A', 'ᶜ']);
+    expect(tokenizeLogic('Aᶜᶜ')).toEqual(['A', 'ᶜ', 'ᶜ']);
+    expect(tokenizeLogic('𝕌')).toEqual(['𝕌']); // a surrogate pair, not torn in half
+    expect(tokenizeLogic('∃!x')).toEqual(['∃!', 'x']);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1300,6 +1408,376 @@ describe('gloss: no two NON-equivalent formulas share an English reading', () =>
       expect(once.length).toBeGreaterThan(0);
       expect(gloss(f, SIG)).toBe(once);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 9b. gloss injectivity, hammered with an EXHAUSTIVE corpus
+//
+// Random deep formulas almost never land on an idiom shape, so a random corpus is
+// the wrong instrument for the one rule english.ts stakes its life on. These
+// corpora are enumerated, not sampled: every quantified body over the four atoms
+// and four connectives, every set relation over every set expression of depth <= 1,
+// every quantifier pair over every argument order of R. That is where the idiom
+// matcher lives, so that is where it gets pressed.
+// ---------------------------------------------------------------------------
+
+/** Group by gloss, then demand every group be a set of logically equivalent formulas. */
+function collisionsIn(corpus: readonly Formula[], sig: Signature, maxN: number): string[] {
+  const worlds = allWorlds(sig, maxN);
+  const byGloss = new Map<string, Array<{ f: Formula; truth: string }>>();
+
+  for (const f of corpus) {
+    const key = gloss(f, sig);
+    const entry = { f, truth: truthVector(f, worlds) };
+    const group = byGloss.get(key);
+    if (group === undefined) byGloss.set(key, [entry]);
+    else group.push(entry);
+  }
+
+  const out: string[] = [];
+  const keys = [...byGloss.keys()].sort();
+  for (const key of keys) {
+    const group = byGloss.get(key) as Array<{ f: Formula; truth: string }>;
+    for (let i = 0; i < group.length; i += 1) {
+      for (let j = i + 1; j < group.length; j += 1) {
+        if (group[i].truth !== group[j].truth) {
+          out.push(
+            `"${key}"\n    <- ${renderFormula(group[i].f)}\n    <- ${renderFormula(group[j].f)}` +
+              `\n    (NOT equivalent — they differ in some world of size <= ${maxN})`,
+          );
+        }
+      }
+    }
+  }
+  return out;
+}
+
+describe('gloss: exhaustive corpora over the shapes the idiom matcher actually fires on', () => {
+  const V = ['x', 'y'] as const;
+  const setOf = (name: string): SetExpr => ({ kind: 'set', name });
+  const atom = (v: string, s: string): Formula => ({
+    kind: 'member',
+    term: { kind: 'var', name: v },
+    set: setOf(s),
+  });
+  const neg = (f: Formula): Formula => ({ kind: 'not', inner: f });
+  const BINARY = ['and', 'or', 'implies', 'iff'] as const;
+  const QUANT = ['forall', 'exists', 'existsUnique'] as const;
+
+  it('every quantified body over {A,B,¬A,¬B} × {∧,∨,→,↔} glosses injectively', () => {
+    const corpus: Formula[] = [];
+    for (const v of V) {
+      const atoms: Formula[] = [
+        atom(v, 'A'),
+        atom(v, 'B'),
+        neg(atom(v, 'A')),
+        neg(atom(v, 'B')),
+      ];
+      const bodies: Formula[] = [...atoms];
+      for (const l of atoms) {
+        for (const r of atoms) {
+          for (const op of BINARY) bodies.push({ kind: op, left: l, right: r });
+        }
+      }
+      for (const q of QUANT) {
+        for (const body of bodies) {
+          const f: Formula = { kind: q, varName: v, body };
+          corpus.push(f);
+          corpus.push(neg(f));
+        }
+      }
+    }
+    // 2 vars × 3 quantifiers × 68 bodies × {plain, negated} = 816 sentences.
+    expect(corpus.length).toBe(2 * 3 * 68 * 2);
+
+    const found = collisionsIn(corpus, SIG_NO_REL, 3);
+    expect(found.slice(0, 6).join('\n---\n')).toBe('');
+    expect(found).toHaveLength(0);
+  });
+
+  it('every ⊆ / = / ≠ over every set expression of depth ≤ 1 glosses injectively', () => {
+    const bases: SetExpr[] = [
+      setOf('A'),
+      setOf('B'),
+      { kind: 'emptyset' },
+      { kind: 'universe' },
+    ];
+    const exprs: SetExpr[] = [...bases];
+    for (const b of bases) exprs.push({ kind: 'compl', inner: b });
+    for (const l of bases) {
+      for (const r of bases) {
+        exprs.push({ kind: 'union', left: l, right: r });
+        exprs.push({ kind: 'inter', left: l, right: r });
+        exprs.push({ kind: 'diff', left: l, right: r });
+      }
+    }
+
+    const corpus: Formula[] = [];
+    for (const l of exprs) {
+      for (const r of exprs) {
+        corpus.push({ kind: 'subset', left: l, right: r });
+        corpus.push({ kind: 'seteq', left: l, right: r });
+        corpus.push(neg({ kind: 'seteq', left: l, right: r }));
+      }
+      corpus.push({ kind: 'member', term: { kind: 'const', name: 'c' }, set: l });
+      corpus.push(neg({ kind: 'member', term: { kind: 'const', name: 'c' }, set: l }));
+    }
+
+    const found = collisionsIn(corpus, SIG_NO_REL, 3);
+    expect(found.slice(0, 6).join('\n---\n')).toBe('');
+    expect(found).toHaveLength(0);
+  });
+
+  it('every quantifier pair × every argument order of R glosses injectively', () => {
+    const corpus: Formula[] = [];
+    for (const outer of QUANT) {
+      for (const inner of QUANT) {
+        for (const left of V) {
+          for (const right of V) {
+            const body: Formula = {
+              kind: 'rel',
+              name: REL_NAME,
+              left: { kind: 'var', name: left },
+              right: { kind: 'var', name: right },
+            };
+            const f: Formula = {
+              kind: outer,
+              varName: 'x',
+              body: { kind: inner, varName: 'y', body },
+            };
+            corpus.push(f);
+            corpus.push(neg(f));
+          }
+        }
+      }
+    }
+    expect(corpus.length).toBe(3 * 3 * 2 * 2 * 2);
+
+    const found = collisionsIn(corpus, SIG, 2);
+    expect(found.slice(0, 6).join('\n---\n')).toBe('');
+    expect(found).toHaveLength(0);
+  });
+
+  it('the propositional closure over {A(c), B(c), ⊤, ⊥, c=c} glosses injectively', () => {
+    const atoms: Formula[] = [
+      { kind: 'member', term: { kind: 'const', name: 'c' }, set: setOf('A') },
+      { kind: 'member', term: { kind: 'const', name: 'c' }, set: setOf('B') },
+      { kind: 'true' },
+      { kind: 'false' },
+      { kind: 'eq', left: { kind: 'const', name: 'c' }, right: { kind: 'const', name: 'c' } },
+    ];
+    const corpus: Formula[] = [...atoms, ...atoms.map(neg)];
+    for (const l of atoms) {
+      for (const r of atoms) {
+        for (const op of BINARY) {
+          const f: Formula = { kind: op, left: l, right: r };
+          corpus.push(f);
+          corpus.push(neg(f));
+        }
+      }
+    }
+    const found = collisionsIn(corpus, SIG_NO_REL, 3);
+    expect(found.slice(0, 6).join('\n---\n')).toBe('');
+    expect(found).toHaveLength(0);
+  });
+
+  it('mixed conjunctions of idiom-shaped sentences gloss injectively', () => {
+    // The idioms are unbracketed strings. Glue two of them together with "and"/"or"
+    // and any ambiguity in where one idiom ends and the next begins shows up here.
+    const idiomatic: Formula[] = [
+      { kind: 'subset', left: setOf('A'), right: setOf('B') },
+      { kind: 'subset', left: setOf('B'), right: setOf('A') },
+      { kind: 'seteq', left: setOf('A'), right: setOf('B') },
+      P('∀x (A(x) → B(x))'),
+      P('∀x (A(x) → ¬B(x))'),
+      P('∃x (A(x) ∧ B(x))'),
+      P('∃x (A(x) ∧ ¬B(x))'),
+      P('¬∃x (A(x) ∧ B(x))'),
+      P('∃!x A(x)'),
+      P('∃!x B(x)'),
+      P('c ∈ A'),
+      P('c ∉ B'),
+      P('∀x A(x)'),
+      P('∃x B(x)'),
+    ];
+    const corpus: Formula[] = [...idiomatic];
+    for (const l of idiomatic) {
+      for (const r of idiomatic) {
+        for (const op of BINARY) corpus.push({ kind: op, left: l, right: r });
+        corpus.push(neg({ kind: 'and', left: l, right: r }));
+      }
+    }
+    const found = collisionsIn(corpus, SIG_NO_REL, 3);
+    expect(found.slice(0, 6).join('\n---\n')).toBe('');
+    expect(found).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 9c. DEFECTS FOUND — pinned, not fixed
+//
+// The rule english.ts stakes itself on is "NO TWO NON-EQUIVALENT FORMULAS MAY SHARE
+// A GLOSS", and `_assertDistinctWords` is the guard that is supposed to uphold it.
+// The guard is INCOMPLETE: it compares each set's word against the OTHER SETS' words,
+// but never against the module's own fixed vocabulary — `everything` (in the
+// complement gloss), `the universe`, `the empty set`. Any set whose word is one of
+// those collides with a built-in, silently.
+//
+// The module docstring even reasons about this and gets it half right: "Set names are
+// identifiers, so they can never collide with a phrase containing a space... A one-word
+// 'everything' here would silently break injectivity." Two things slipped through:
+//   (a) `_glossSet(compl)` renders the BARE one-word "everything", and a set can simply
+//       BE named `everything` — a perfectly legal identifier, no `nouns` map required;
+//   (b) `nouns` lets an author supply a word WITH spaces, so "the universe" and "the
+//       empty set" are reachable after all.
+//
+// These tests assert the WRONG behaviour, deliberately, so the suite stays green and
+// the bug stays visible. DELETE THEM WHEN THE GUARD IS FIXED — they will go red, and
+// that is the point.
+// ---------------------------------------------------------------------------
+
+describe('DEFECT (english.ts): gloss collides with its own fixed vocabulary', () => {
+  it('DEFECT 1: a set named `everything` makes A ∖ B and Bᶜ read identically', () => {
+    const sig: Signature = { sets: ['everything', 'B'], relations: [], constants: ['c'] };
+    const aMinusB = P('c ∈ everything ∖ B', sig);
+    const complB = P('c ∈ Bᶜ', sig);
+
+    // No `nouns` map at all — this is the default naming.
+    expect(gloss(aMinusB, sig)).toBe('c is in (everything except B)');
+    expect(gloss(complB, sig)).toBe('c is in (everything except B)');
+    expect(gloss(aMinusB, sig)).toBe(gloss(complB, sig)); // <-- the collision
+
+    // ...and the two formulas are NOT equivalent, so this is a true violation of the rule.
+    const v = logicEquivalent(aMinusB, complB, sig);
+    expect(v.equal).toBe(false);
+    if (v.equal) return;
+    expect(refEval(aMinusB, toWorld(v.model), {})).not.toBe(refEval(complB, toWorld(v.model), {}));
+
+    // The guard that is supposed to prevent exactly this says nothing.
+    expect(() => gloss(aMinusB, sig)).not.toThrow();
+  });
+
+  it('DEFECT 2: a `nouns` plural of "everything" does the same, with realistic names', () => {
+    const sig: Signature = { sets: ['Animals', 'Dog'], relations: [], constants: ['rex'] };
+    const nouns = {
+      Animals: { singular: 'animal', plural: 'everything' },
+      Dog: { singular: 'dog', plural: 'dogs' },
+    };
+    const notADog = P('rex ∈ Animals ∖ Dog', sig);
+    const complDog = P('rex ∈ Dogᶜ', sig);
+
+    expect(gloss(notADog, sig, nouns)).toBe('rex is in (everything except dogs)');
+    expect(gloss(complDog, sig, nouns)).toBe('rex is in (everything except dogs)');
+    expect(logicEquivalent(notADog, complDog, sig).equal).toBe(false);
+  });
+
+  it('DEFECT 3: a `nouns` plural of "the universe" / "the empty set" collides with 𝕌 / ∅', () => {
+    const sig: Signature = { sets: ['All', 'B'], relations: [], constants: ['c'] };
+    const universe = { All: { singular: 'thing', plural: 'the universe' }, B: { singular: 'b', plural: 'bs' } };
+    expect(gloss(P('All = B', sig), sig, universe)).toBe(gloss(P('𝕌 = B', sig), sig, universe));
+    expect(logicEquivalent(P('All = B', sig), P('𝕌 = B', sig), sig).equal).toBe(false);
+
+    const sig2: Signature = { sets: ['Nothing', 'B'], relations: [], constants: ['c'] };
+    const empty = {
+      Nothing: { singular: 'nothing', plural: 'the empty set' },
+      B: { singular: 'b', plural: 'bs' },
+    };
+    expect(gloss(P('Nothing = B', sig2), sig2, empty)).toBe(gloss(P('∅ = B', sig2), sig2, empty));
+    expect(logicEquivalent(P('Nothing = B', sig2), P('∅ = B', sig2), sig2).equal).toBe(false);
+  });
+
+  it('the guard DOES catch the case it was written for (two sets, one word)', () => {
+    const sig: Signature = { sets: ['Dog', 'Hound'], relations: [], constants: [] };
+    const nouns = {
+      Dog: { singular: 'dog', plural: 'dogs' },
+      Hound: { singular: 'dog', plural: 'hounds' },
+    };
+    expect(() => gloss(P('Dog ⊆ Hound', sig), sig, nouns)).toThrow(/both read as "dog"/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 10. satisfiable / isTautology, and the loud preconditions
+// ---------------------------------------------------------------------------
+
+describe('satisfiable and isTautology agree with brute force', () => {
+  it('random sentences: satisfiable() finds a model exactly when one exists', () => {
+    const rng = makeRng(0x5a7);
+    const worlds = allWorlds(SIG_NO_REL, 3);
+    for (let i = 0; i < 200; i += 1) {
+      const f = genSentence(rng, 3, NO_REL);
+      const anyTrue = worlds.some((w) => refEval(f, w, {}));
+      const m = satisfiable(f, SIG_NO_REL, 3);
+
+      expect(m !== null, `satisfiable disagrees on ${renderFormula(f)}`).toBe(anyTrue);
+      if (m === null) continue;
+      // The witness must actually witness — checked with the oracle.
+      expect(refEval(f, toWorld(m), {}), `witness does not satisfy ${renderFormula(f)}`).toBe(true);
+      expect(evaluate(f, m)).toBe(true);
+    }
+  });
+
+  it('random sentences: isTautology() matches "true in every world"', () => {
+    const rng = makeRng(0x7a07);
+    const worlds = allWorlds(SIG_NO_REL, 3);
+    for (let i = 0; i < 200; i += 1) {
+      const f = genSentence(rng, 3, NO_REL);
+      const allTrue = worlds.every((w) => refEval(f, w, {}));
+      expect(isTautology(f, SIG_NO_REL, 3), renderFormula(f)).toBe(allTrue);
+    }
+  });
+
+  it('⊥ is unsatisfiable and ⊤ is valid; a contradiction has no witness', () => {
+    expect(satisfiable(P('⊥'), SIG)).toBeNull();
+    expect(satisfiable(P('∃x (A(x) ∧ ¬A(x))'), SIG)).toBeNull();
+    expect(isTautology(P('⊤'), SIG)).toBe(true);
+    expect(isTautology(P('∀x (A(x) ∨ ¬A(x))'), SIG)).toBe(true);
+    expect(isTautology(P('∀x A(x)'), SIG)).toBe(false);
+  });
+
+  it('a signature with no names at all still enumerates one world per domain size', () => {
+    // ∃x ∀y (x = y) says "there is exactly one thing" — it needs no sets, no relations
+    // and no constants, so it exercises the empty-signature enumeration directly. If a
+    // signature with zero coordinates yielded nothing, this would be graded a tautology.
+    expect(isTautology(P('∃x ∀y (x = y)'), SIG)).toBe(false);
+    expect(logicEquivalent(P('∃x ∀y (x = y)'), P('⊤'), SIG).equal).toBe(false);
+    const v = logicEquivalent(P('∃x ∀y (x = y)'), P('⊤'), SIG);
+    if (!v.equal) expect(v.model.domain.length).toBe(2);
+    expect(isTautology(P('∀x (x = x)'), SIG)).toBe(true);
+  });
+});
+
+describe('the preconditions are loud, because the alternative is a confident lie', () => {
+  it('an open formula cannot be graded — it is thrown back, not silently closed', () => {
+    // The commonest teachable mistake: forgetting the quantifier. If the grader
+    // universally closed it for them, it would be grading a sentence they did not write.
+    const open: Formula = {
+      kind: 'implies',
+      left: { kind: 'member', term: { kind: 'var', name: 'x' }, set: { kind: 'set', name: 'A' } },
+      right: { kind: 'member', term: { kind: 'var', name: 'x' }, set: { kind: 'set', name: 'B' } },
+    };
+    expect(() => logicEquivalent(open, P('A ⊆ B'), SIG)).toThrow(/free variable/i);
+    expect(() => logicEquivalent(P('A ⊆ B'), open, SIG)).toThrow(/free variable/i);
+    expect(() => satisfiable(open, SIG)).toThrow(/free variable/i);
+    expect(() => isTautology(open, SIG)).toThrow(/free variable/i);
+  });
+
+  it('a name the signature does not declare is an authoring bug, not an empty set', () => {
+    const typo: Formula = {
+      kind: 'forall',
+      varName: 'x',
+      body: { kind: 'member', term: { kind: 'var', name: 'x' }, set: { kind: 'set', name: 'Redd' } },
+    };
+    expect(() => logicEquivalent(typo, P('⊤'), SIG)).toThrow(/does not declare/i);
+  });
+
+  it('maxDomain below 1 is refused — an empty search would mark every answer correct', () => {
+    expect(() => logicEquivalent(P('⊤'), P('⊥'), SIG, { maxDomain: 0 })).toThrow(/at least 1/i);
+    expect(() => logicEquivalent(P('⊤'), P('⊥'), SIG, { maxDomain: -1 })).toThrow();
+    expect(() => logicEquivalent(P('⊤'), P('⊥'), SIG, { maxDomain: 2.5 })).toThrow(/whole number/i);
+    // ...and it must still be able to tell ⊤ from ⊥ at the smallest legal scope.
+    expect(logicEquivalent(P('⊤'), P('⊥'), SIG, { maxDomain: 1 }).equal).toBe(false);
   });
 });
 
