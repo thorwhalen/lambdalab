@@ -1388,21 +1388,28 @@ describe('property: equivalent() holds up under the nastiest inputs', () => {
 });
 
 // ===========================================================================
-// KNOWN DEFECTS — found by this suite, NOT fixed here (that is the next phase).
+// ALPHABET INTEGRITY — the three defects this suite found.
 //
-// These are `it.fails`: vitest treats them as GREEN while the bug is present and
-// turns them RED the moment somebody fixes it. That inversion is deliberate. Each
-// body asserts the CORRECT behaviour, so the fix is finished when you delete the
-// `.fails` and the test goes green on its own merits. Do not delete the test.
+// Shared root cause: `Sym` is defined as "one character", `regexParse.ts` advertised
+// an OPEN alphabet, and yet the engine had neither an escape nor a code-point-safe
+// input reader. Those claims were never simultaneously satisfiable, and the engine
+// mis-graded rather than complained.
 //
-// All three are the same root cause wearing three hats: `Sym` is defined as "one
-// character", the regex surface syntax has NO escape, and `regexParse.ts` claims
-// an OPEN alphabet ("any character that is not one of the eight metacharacters is
-// a literal symbol, whatever it is"). Those three claims are not simultaneously
-// satisfiable, and the engine currently mis-grades rather than complains.
+// DEFECTS 2 and 3 are now FIXED: `regexParse.ts` gained a `\` escape (so a symbol
+// may BE a metacharacter) and stopped eating whitespace (so ' ' is a symbol). Their
+// tests are therefore plain `it` and must stay green — they are regression tests
+// now, and they are the whole reason the escape exists.
+//
+// DEFECT 1 is still OPEN, and stays `it.fails`: vitest treats it as GREEN while the
+// bug is present and turns it RED the moment somebody fixes it. That inversion is
+// deliberate — the body asserts the CORRECT behaviour, so the fix is finished when
+// you delete the `.fails` and it goes green on its own merits. Do not delete the
+// test. Note it does NOT live in regexParse.ts: `simulate.runInput` indexes the
+// input by UTF-16 CODE UNIT, so an astral symbol never matches its own edge. Fixing
+// it means reading that input by code point, the way `tokenize` already does.
 // ===========================================================================
 
-describe('KNOWN DEFECTS (it.fails: green while broken, red once fixed)', () => {
+describe('Alphabet integrity (defect 1 still open; 2 and 3 are regressions)', () => {
   /**
    * DEFECT 1 — an astral symbol (emoji) can never be accepted by its own machine.
    *
@@ -1430,46 +1437,42 @@ describe('KNOWN DEFECTS (it.fails: green while broken, red once fixed)', () => {
   });
 
   /**
-   * DEFECT 2 — whitespace is a silent ninth metacharacter, and it eats a language.
+   * DEFECT 2 (FIXED) — whitespace was a silent ninth metacharacter, and it ate a
+   * language.
    *
-   * `tokenize` drops every `\s` character. So ' ' (a perfectly legal `Sym`) cannot
-   * be written as a regex at all: a machine over Σ = {' '} whose language is {" "}
-   * renders to the regex `" "`, which re-parses to **ε** — a different language.
-   * The machine→regex→machine leg of Kleene's theorem, which is the lesson, is
-   * therefore NOT the identity on this alphabet.
+   * `tokenize` used to drop every `\s` character. So ' ' (a perfectly legal `Sym`)
+   * could not be written as a regex at all: a machine over Σ = {' '} whose language
+   * is {" "} rendered to the regex `" "`, which re-parsed to **ε** — a different
+   * language. The machine→regex→machine leg of Kleene's theorem, which IS the
+   * lesson, was therefore not the identity on this alphabet. It also silently
+   * rewrote what a child typed: `parseRegex('a b')` was `ab`.
    *
-   * It also silently rewrites what a child typed: `parseRegex('a b')` is `ab`.
-   * Over Σ = {a, b, ' '} that is the wrong language, and the grader will not say so.
-   *
-   * MINIMAL REPRO: parseRegex(renderRegex({kind:'literal', sym:' '})).node
-   *                === {kind:'epsilon'}   (should be the literal ' ')
+   * Fixed by making whitespace a literal like any other character. This test is now
+   * the regression that keeps it that way.
    */
-  it.fails('a literal space survives render → parse', () => {
+  it('a literal space survives render → parse', () => {
     const space: RegexNode = { kind: 'literal', sym: ' ' };
     const parsed = parseRegex(renderRegex(space));
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    expect(parsed.node).toEqual(space); // <-- currently {kind:'epsilon'}
+    expect(parsed.node).toEqual(space);
   });
 
   /**
-   * DEFECT 3 — a machine over a metacharacter alphabet renders to a regex that does
-   * not parse, so `automatonToRegex` has no inverse there.
+   * DEFECT 3 (FIXED) — a machine over a metacharacter alphabet rendered to a regex
+   * that did not parse, so `automatonToRegex` had no inverse there.
    *
    * Σ = {'+'} is not exotic; it is the alphabet of an arithmetic-token lesson. The
-   * machine accepting exactly "+" renders to the regex `+`, and `parseRegex('+')`
-   * fails with "There is nothing before '+' to repeat." The ConvertLab would show a
+   * machine accepting exactly "+" rendered to the regex `+`, and `parseRegex('+')`
+   * failed with "There is nothing before '+' to repeat." The ConvertLab would show a
    * child a machine, convert it, and hand back a broken regex.
    *
-   * `renderRegex` DOES document this ("Precondition: literal symbols are not
-   * metacharacters… there is no escape hatch, by design") — but `automatonToRegex`
-   * inherits the precondition without stating it, and nothing in the engine enforces
-   * or even detects it. An unrepresentable alphabet should be rejected loudly at the
-   * door, not turned into a regex that silently fails to parse.
-   *
-   * MINIMAL REPRO: parseRegex(renderRegex({kind:'literal', sym:'+'})).ok === false
+   * Fixed by giving the surface syntax an escape: that machine now renders to `\+`,
+   * which re-parses to the literal '+'. The alphabet is genuinely open at last —
+   * rather than being *rejected* at the door, a metacharacter alphabet is simply
+   * spellable. This test is now the regression that keeps it that way.
    */
-  it.fails('a machine over Σ={+} round trips through its own regex', () => {
+  it('a machine over Σ={+} round trips through its own regex', () => {
     const machine: Automaton = {
       states: ['q0', 'q1'],
       alphabet: ['+'],

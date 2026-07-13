@@ -31,6 +31,18 @@
  *
  * Domains start at size 1 throughout: the empty domain is not a model of anything
  * in classical first-order logic, and the engine is right to refuse it.
+ *
+ * WHAT THIS SUITE FOUND
+ *
+ * parse.ts, evaluate.ts, models.ts and equivalence.ts came through clean: the round
+ * trip holds on 12 000 random ASTs, `evaluate` matches the independent oracle on every
+ * model of every signature it was pointed at, the enumeration order matches all three
+ * of its documented promises, and every counterexample handed back both separates the
+ * formulas and is minimal in the domain size.
+ *
+ * english.ts does NOT hold. `gloss` collides with its own fixed vocabulary — see
+ * section 9c, "DEFECT". Those tests assert the wrong behaviour on purpose, so the suite
+ * stays green while the bug stays visible; they must be deleted when the guard is fixed.
  */
 
 import { describe, expect, it } from 'vitest';

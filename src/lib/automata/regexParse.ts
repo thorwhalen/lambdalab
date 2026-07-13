@@ -9,14 +9,26 @@
  *
  * Three commitments, because this code grades children:
  *
- * 1. **The alphabet is open.** Any character that is not one of the eight
- *    metacharacters `( ) | * + ? ε ∅` is a literal symbol, so {a,b}, {0,1} and
- *    emoji all work with zero configuration. The price is that a symbol can
- *    never *be* a metacharacter: there is no escape hatch, by design.
+ * 1. **The alphabet is open, and EVERY symbol is spellable.** A character that is
+ *    not one of the nine metacharacters `( ) | * + ? ε ∅ \` is a literal symbol,
+ *    whatever it is — a digit, an emoji, a space. A character that *is* one of
+ *    them is written with a leading `\`: `\+` is the symbol '+', `\\` is the
+ *    symbol '\'. So {a,b}, {0,1}, {+,-,×} and {😀} all work, and — this is the
+ *    point — machine → regex → machine is the identity on *every* alphabet, not
+ *    just on the alphabets that happen to avoid our punctuation. (An earlier
+ *    version had no escape and silently produced regexes that would not re-parse.)
+ *
+ *    The one symbol that is genuinely unspellable is **ε itself**, and that is a
+ *    limitation of the automaton contract rather than of this syntax:
+ *    `Transition.on` is `Sym | Epsilon` (types.ts), so a machine has no way to
+ *    tell the *symbol* 'ε' from the *free move* ε. `isSpellableSymbol` is the
+ *    single place that rule lives; `\ε` is refused rather than mis-built.
  *
  * 2. **Empty source parses to ε**, not to an error (see `parseRegex`). Every
  *    *other* empty production — `()`, `a|`, `a||b` — is an error, because there
  *    the learner plainly meant to write something and we should say where.
+ *    Whitespace is NOT stripped: a space is a symbol like any other, and a
+ *    tokenizer that ate it would turn the language {" "} into the language {""}.
  *
  * 3. **Every simplification is sound.** A rewrite that changes the language is
  *    the worst bug this file could have: an un-pretty regex costs a par point,
@@ -40,6 +52,15 @@ const ALT = '|';
 const STAR = '*';
 const PLUS = '+';
 const OPT = '?';
+
+/**
+ * The escape introducer. `\x` is the literal symbol `x` for ANY x, so it is the
+ * one metacharacter that cannot be typed on its own — `\\` spells it.
+ */
+const ESCAPE = '\\';
+
+/** A `Sym` is one character, and "character" means one code point (types.ts). */
+const CODE_POINTS_PER_SYMBOL = 1;
 
 /**
  * Binding strength, loosest to tightest. Used by both the grammar (implicitly)
@@ -79,27 +100,9 @@ interface Tok {
 }
 
 /**
- * Split the source into tokens, dropping whitespace.
- *
- * Iteration is by code point, not code unit, so an emoji is a single literal
- * symbol rather than two broken halves. `\s` here covers NBSP and the other
- * exotic spaces, which matters: children paste regexes out of chat apps.
- */
-function tokenize(src: string): Tok[] {
-  const toks: Tok[] = [];
-  let i = 0;
-  while (i < src.length) {
-    const ch = String.fromCodePoint(src.codePointAt(i) as number);
-    if (!/\s/u.test(ch)) toks.push({ kind: kindOf(ch), text: ch, at: i });
-    i += ch.length;
-  }
-  toks.push({ kind: 'eof', text: '', at: src.length });
-  return toks;
-}
-
-/**
- * The eight metacharacters, and nothing else. This table IS the "open alphabet"
- * rule: a character absent from it is a literal symbol, whatever it is.
+ * The eight metacharacters that are not the escape. This table IS the "open
+ * alphabet" rule: a character absent from it (and not `\`) is a literal symbol,
+ * whatever it is — whitespace very much included. Nothing is silently dropped.
  */
 const METACHAR_KINDS: ReadonlyMap<string, TokKind> = new Map<string, TokKind>([
   [LPAREN, LPAREN],
@@ -113,6 +116,78 @@ const METACHAR_KINDS: ReadonlyMap<string, TokKind> = new Map<string, TokKind>([
 ]);
 
 const kindOf = (ch: string): TokKind => METACHAR_KINDS.get(ch) ?? 'lit';
+
+/**
+ * The characters a literal symbol must be escaped with `\` to spell.
+ *
+ * Derived from the table above rather than restated, so the renderer cannot
+ * drift from the tokenizer: a symbol re-reads as itself exactly when `tokenize`
+ * would call it a `'lit'`, and `tokenize` calls it a `'lit'` exactly when it is
+ * neither a metacharacter nor the escape introducer. Restating this list by hand
+ * is how a round-trip bug gets in — add a metacharacter to `METACHAR_KINDS` and
+ * this set grows with it, for free.
+ */
+const NEEDS_ESCAPE: ReadonlySet<string> = new Set([...METACHAR_KINDS.keys(), ESCAPE]);
+
+/**
+ * Can `sym` be a symbol of a regex at all?
+ *
+ * Exactly one code point, and not ε. The ε exclusion is forced by the *automaton*
+ * contract, not by this syntax: `Transition.on: Sym | Epsilon` (types.ts) leaves a
+ * machine no way to tell the symbol 'ε' from the free move ε, so a regex over
+ * Σ ∋ 'ε' could never be turned into a machine that means it. Refusing it here is
+ * the only honest option — the alternative is a machine that quietly accepts "".
+ *
+ * Everything else is spellable, metacharacters included (`\+`, `\∅`, `\\`).
+ */
+export function isSpellableSymbol(sym: Sym): boolean {
+  return [...sym].length === CODE_POINTS_PER_SYMBOL && sym !== EPSILON;
+}
+
+/** Why `sym` is not spellable — shown to a learner, so it says what to do instead. */
+const unspellable = (sym: Sym): string =>
+  sym === EPSILON
+    ? `'${EPSILON}' is the empty-string move, so it cannot also be a symbol of the alphabet. ` +
+      `Write ${EPSILON} on its own to mean "the empty string".`
+    : `A symbol must be exactly one character, but '${sym}' is ${[...sym].length}.`;
+
+/**
+ * Split the source into tokens.
+ *
+ * Iteration is by code point, not code unit, so an emoji is a single literal
+ * symbol rather than two broken halves — and `simulate.runInput` reads an input
+ * string the same way, or the machine could not accept its own alphabet.
+ *
+ * `\` escapes the character after it, which is what makes a metacharacter usable
+ * as a symbol. Nothing is discarded: whitespace is a literal like anything else.
+ */
+function tokenize(src: string): Tok[] {
+  const toks: Tok[] = [];
+  let i = 0;
+  while (i < src.length) {
+    const ch = String.fromCodePoint(src.codePointAt(i) as number);
+
+    if (ch !== ESCAPE) {
+      toks.push({ kind: kindOf(ch), text: ch, at: i });
+      i += ch.length;
+      continue;
+    }
+
+    // The token's offset is the '\', not the escaped character: that is where the
+    // learner's caret must land, and it is where the whole symbol starts.
+    const at = i;
+    i += ch.length;
+    if (i >= src.length) {
+      fail(`A '${ESCAPE}' must be followed by the character it stands for.`, at);
+    }
+    const escaped = String.fromCodePoint(src.codePointAt(i) as number);
+    if (!isSpellableSymbol(escaped)) fail(unspellable(escaped), at);
+    toks.push({ kind: 'lit', text: escaped, at });
+    i += escaped.length;
+  }
+  toks.push({ kind: 'eof', text: '', at: src.length });
+  return toks;
+}
 
 // ---------------------------------------------------------------------------
 // Parser
@@ -261,19 +336,23 @@ function failMissingOperand(c: Cursor): never {
 /**
  * Parse a regex source string.
  *
- * An empty (or whitespace-only) source is **ε** — the regex matching exactly the
- * empty string — and not an error. A blank answer box is then a wrong answer the
- * grader can explain ("your regex matches only the empty string") rather than a
- * red squiggle, which is the pedagogy we want.
+ * An **empty** source is ε — the regex matching exactly the empty string — and not
+ * an error. A blank answer box is then a wrong answer the grader can explain ("your
+ * regex matches only the empty string") rather than a red squiggle, which is the
+ * pedagogy we want. A *whitespace* source is NOT empty: ' ' is the one-symbol regex
+ * over Σ = {' '}, because a space is a `Sym` like any other and a parser that
+ * quietly deleted it would grade a different language than the one the child typed.
  *
- * Offsets in the failure case are UTF-16 code-unit indices into `src`.
+ * Offsets in the failure case are UTF-16 code-unit indices into `src`, so they are
+ * valid `slice` positions even when an astral symbol precedes them.
  */
 export function parseRegex(src: string): ParseResult {
-  const toks = tokenize(src);
-  if (toks.length === 1) return { ok: true, node: { kind: 'epsilon' } };
-
-  const c: Cursor = { toks, i: 0 };
   try {
+    // Inside the try: `tokenize` can fail too, on a dangling or unspellable escape.
+    const toks = tokenize(src);
+    if (toks.length === 1) return { ok: true, node: { kind: 'epsilon' } };
+
+    const c: Cursor = { toks, i: 0 };
     const node = parseUnion(c);
     const rest = peek(c);
     if (rest.kind !== 'eof') {
@@ -317,6 +396,21 @@ function renderAt(n: RegexNode, minPrec: number): string {
   return precOf(n) < minPrec ? `${LPAREN}${body}${RPAREN}` : body;
 }
 
+/**
+ * A literal, spelled so that it reads back as itself: `\` in front of anything the
+ * grammar would otherwise claim.
+ *
+ * Throws on an unspellable symbol rather than emitting a string that fails to
+ * re-parse. That failure would surface far downstream, as a broken answer in a
+ * child's face, and by then nothing knows where it came from.
+ */
+function renderLiteral(sym: Sym): string {
+  if (!isSpellableSymbol(sym)) {
+    throw new Error(`renderRegex: ${unspellable(sym)}`);
+  }
+  return NEEDS_ESCAPE.has(sym) ? ESCAPE + sym : sym;
+}
+
 function render(n: RegexNode): string {
   switch (n.kind) {
     case 'empty':
@@ -324,7 +418,7 @@ function render(n: RegexNode): string {
     case 'epsilon':
       return EPSILON;
     case 'literal':
-      return n.sym;
+      return renderLiteral(n.sym);
     // Both binary operators parse left-associatively, so a right child of the
     // *same* operator must be parenthesised — `a|(b|c)` — or the tree shape is
     // lost on the round-trip. Requiring the right child to bind at least as
@@ -349,9 +443,11 @@ function render(n: RegexNode): string {
  * `n`, and every parenthesis emitted is load-bearing (removing any one pair
  * either breaks the parse or changes the tree).
  *
- * Precondition: literal symbols are not metacharacters. The surface syntax has
- * no escape, so a hand-built `{kind:'literal', sym:'|'}` cannot round-trip —
- * nothing the parser produces can ever violate this.
+ * Metacharacter literals round-trip: a hand-built `{kind:'literal', sym:'|'}`
+ * renders as `\|` and reads back as itself (see `renderLiteral`). The one symbol
+ * that cannot round-trip is ε, which is unspellable by the automaton contract,
+ * not by this syntax — `renderLiteral` throws on it rather than emit a string
+ * that silently fails to re-parse.
  */
 export function renderRegex(node: RegexNode): string {
   return render(node);
