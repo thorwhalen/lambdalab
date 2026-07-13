@@ -145,9 +145,13 @@ describe('parseRegex — atoms and the empty source', () => {
     expect(parsed('')).toEqual(eps);
   });
 
-  it('ignores whitespace, so a whitespace-only source is also ε', () => {
-    expect(parsed('   \n\t ')).toEqual(eps);
-    expect(parsed(' a  b ')).toEqual(cat(lit('a'), lit('b')));
+  it('treats whitespace as a literal symbol, not a separator', () => {
+    // A tokenizer that ate whitespace would turn the language {" "} into the
+    // language {""} — a *different* language, silently. So ' ' is a Sym like any
+    // other, and `a b` is three symbols, not two. (This overturns the earlier
+    // "whitespace is stripped" rule, which cost us DEFECT 2 in roundtrip.fuzz.)
+    expect(parsed(' ')).toEqual(lit(' '));
+    expect(parsed('a b')).toEqual(cat(cat(lit('a'), lit(' ')), lit('b')));
   });
 
   it('parses the two constants', () => {

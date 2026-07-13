@@ -28,6 +28,7 @@ import { automatonToRegex, automatonToRegexSteps } from '../../lib/automata/toRe
 import { toDFA } from '../../lib/automata/subset';
 import { minimize } from '../../lib/automata/minimize';
 import { equivalent } from '../../lib/automata/equivalence';
+import { forDisplay } from '../../lib/automata/layout';
 import { AutomatonCanvas } from '../../components/AutomatonCanvas';
 import { Button, Panel, Verdict } from '../../components/ui';
 import { LANGUAGE_PUZZLES } from './content';
@@ -51,7 +52,13 @@ export function ConvertLab() {
   const machine = useMemo<Automaton | null>(() => {
     const p = parseRegex(puzzle.regex);
     if (!p.ok) return null;
-    return minimize(toDFA(regexToNFA(p.node)).dfa);
+    // `forDisplay` renames the states. It has to: the subset construction names a
+    // state after the SET of NFA states it stands for, which is the whole point of
+    // the algorithm and completely unreadable once minimisation has joined a few
+    // of them with "|". A state called
+    // {q0,q12,q14,q16,q17,q18,q19,q2,q3,q4,q5,q7,q8}|{q1,q6} teaches nobody
+    // anything. The maths is untouched; only the labels change.
+    return forDisplay(minimize(toDFA(regexToNFA(p.node)).dfa));
   }, [puzzle]);
 
   const steps = useMemo(() => (machine ? automatonToRegexSteps(machine) : []), [machine]);
@@ -70,12 +77,39 @@ export function ConvertLab() {
     const nfa = regexToNFA(p.node);
     const { dfa } = toDFA(nfa);
     const min = minimize(dfa);
-    return { nfa, dfa, min };
+    return { nfa: forDisplay(nfa), dfa: forDisplay(dfa), min: forDisplay(min) };
   }, [puzzle]);
 
   if (!machine || !built) return null;
 
-  const shown = dir === 'toRegex' ? (step === 0 ? machine : (steps[step - 1]?.before ?? machine)) : null;
+  /**
+   * The last frame.
+   *
+   * Each `EliminationStep` carries the graph as it was *before* that state was
+   * ripped out, so after the final step there is no frame left to show — and the
+   * picture would still be displaying the state we just said we removed. What
+   * actually remains at the end is two states and one arrow, and the label on
+   * that arrow IS the answer. So we draw exactly that. It is the punchline of the
+   * whole activity and it deserves to be on screen, not just in a paragraph.
+   */
+  const finished: Automaton | null =
+    finalRegex && {
+      states: ['START', 'ACCEPT'],
+      alphabet: [],
+      transitions: [{ from: 'START', on: renderRegex(simplifyRegex(finalRegex)), to: 'ACCEPT' }],
+      start: 'START',
+      accepting: ['ACCEPT'],
+      layout: { START: { x: 90, y: 140 }, ACCEPT: { x: 480, y: 140 } },
+    };
+
+  const shown =
+    dir !== 'toRegex'
+      ? null
+      : step === 0
+        ? machine
+        : step >= steps.length
+          ? (finished ?? machine)
+          : (steps[step - 1]?.before ?? machine);
 
   return (
     <div>

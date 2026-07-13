@@ -9,6 +9,16 @@ import type { Resource } from '../../core/types';
 export const RESOURCES: Resource[] = [
   // --- hooks ---------------------------------------------------------------
   {
+    title: 'Regular Languages: Deterministic Finite Automaton (DFA)',
+    url: 'https://www.youtube.com/watch?v=PK3wL7DXuuw',
+    kind: 'video',
+    role: 'hook',
+    creator: 'lydia',
+    cost: 'free',
+    why: 'The machine before the notation: what a DFA is, drawn and run on strings, with nothing assumed. Watch this one first — the rest of the shelf answers questions it puts in your head.',
+    concepts: ['DFA', 'states', 'transitions', 'acceptance'],
+  },
+  {
     title: 'Regular Expressions (Regexp) Basics',
     url: 'https://www.youtube.com/watch?v=528Jc3q86F8',
     kind: 'video',
