@@ -280,7 +280,7 @@ export function MachineBuilder({ level }: { level: number }) {
 
               {unlocked && (
                 <div className="mt-3 rounded-xl border border-mach-500/50 bg-mach-500/12 p-3 text-sm">
-                  <b className="text-mach-400">Level {unlocked} unlocked</b> —{' '}
+                  <b className="text-mach-400">Level {unlocked} reached</b> —{' '}
                   <span className="text-ink-300">{LADDER[unlocked - 1].goal}</span>
                 </div>
               )}
