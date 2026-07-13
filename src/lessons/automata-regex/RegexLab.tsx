@@ -95,7 +95,7 @@ export function RegexLab({ level }: { level: number }) {
   if (!puzzle || !target) {
     return (
       <Panel>
-        <p className="text-ink-400">No regex puzzles unlocked yet.</p>
+        <p className="text-ink-400">No regex puzzles at this rung yet.</p>
       </Panel>
     );
   }
@@ -291,7 +291,7 @@ export function RegexLab({ level }: { level: number }) {
               </Verdict>
               {unlocked && (
                 <div className="mt-3 rounded-xl border border-mach-500/50 bg-mach-500/12 p-3 text-sm">
-                  <b className="text-mach-400">Level {unlocked} unlocked</b> —{' '}
+                  <b className="text-mach-400">Level {unlocked} reached</b> —{' '}
                   <span className="text-ink-300">{LADDER[unlocked - 1].goal}</span>
                 </div>
               )}

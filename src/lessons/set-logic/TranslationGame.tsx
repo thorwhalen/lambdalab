@@ -444,7 +444,7 @@ export function TranslationGame({ level }: { level: number }) {
 
               {unlocked && (
                 <div className="mt-3 rounded-xl border border-lam-500/50 bg-lam-500/12 p-3 text-sm">
-                  <b className="text-lam-400">Level {unlocked} unlocked</b> —{' '}
+                  <b className="text-lam-400">Level {unlocked} reached</b> —{' '}
                   <span className="text-ink-300">{LADDER[unlocked - 1].goal}</span>
                 </div>
               )}

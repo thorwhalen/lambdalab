@@ -141,7 +141,7 @@ export function VennGame({ level }: { level: number }) {
   if (!puzzle) {
     return (
       <Panel>
-        <p className="text-ink-400">Reach level 3 to unlock the Venn workshop.</p>
+        <p className="text-ink-400">The Venn workshop starts at level 3 — pick that rung on the ladder.</p>
       </Panel>
     );
   }
