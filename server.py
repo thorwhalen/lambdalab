@@ -53,6 +53,20 @@ BOARDS_DIR = DATA_DIR / "leaderboards"
 # attack; either way it must never reach the filesystem.
 BOARD_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*(?:\.[a-z0-9]+(?:-[a-z0-9]+)*)+$")
 
+# The boards the app ships. Only these may be created or read: an anonymous POST for any
+# other well-formed id would otherwise make a new file, growing the disk and the scans in
+# /boards and /health without bound. This is also the cap on the number of boards. It mirrors
+# the *_BOARD constants in src/lessons/*/content.ts; src/boards.test.ts fails if they drift.
+KNOWN_BOARDS = frozenset(
+    {
+        "set-logic.translate",
+        "set-logic.venn",
+        "automata-regex.build",
+        "automata-regex.regex",
+        "automata-regex.convert",
+    }
+)
+
 NICKNAME_MAX_LEN = 16
 # Letters (any script — the kids may want accents), digits, spaces, - and _.
 NICKNAME_RE = re.compile(r"^[\w \-]{1,%d}$" % NICKNAME_MAX_LEN, re.UNICODE)
@@ -91,6 +105,8 @@ class ScoreSubmission(BaseModel):
     def _check_board(cls, v: str) -> str:
         if not BOARD_RE.match(v):
             raise ValueError(f"malformed board id: {v!r}")
+        if v not in KNOWN_BOARDS:
+            raise ValueError(f"unknown board id: {v!r}")
         return v
 
     @field_validator("nickname")
@@ -202,6 +218,8 @@ def list_boards() -> dict[str, Any]:
 
 @app.get("/boards/{board}", response_model=Board)
 def get_board(board: str, limit: int = DEFAULT_PAGE) -> Board:
+    if board not in KNOWN_BOARDS:
+        raise HTTPException(status_code=404, detail="unknown board")
     limit = max(1, min(limit, MAX_PAGE))
     rows = _ranked(_load(board))[:limit]
     return Board(board=board, entries=[ScoreEntry(**r) for r in rows])
