@@ -186,7 +186,7 @@ export const RESOURCES: Resource[] = [
   },
   {
     title: 'Pythex',
-    url: 'http://pythex.org/',
+    url: 'https://pythex.org/',
     kind: 'tool',
     role: 'practice',
     cost: 'free',

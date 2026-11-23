@@ -8,19 +8,24 @@
  *
  * Two things make it teach rather than merely test:
  *   - the PATH: one new symbol per station (`golf.ts`), each puzzle solvable with
- *     the symbols met so far, the palette showing exactly those;
+ *     the symbols met so far, the palette showing exactly those, and an
+ *     exhaustive search (`golfSearch.ts`) proving par is honest and the new
+ *     symbol is needed;
  *   - the EVIDENCE: every word shows, live, whether the pattern found something
  *     in it and WHERE (the matched part is highlighted), so "it found cat inside
  *     concatenate" is visible, not explained.
  *
  * Stations are progressive disclosure, not gates: every station can be opened at
- * any time; solving is what moves the "you are here" marker along.
+ * any time. Station chips and puzzles carry no sigils beyond the symbol itself:
+ * the symbol IS the station's picture.
  */
 import { useMemo, useState } from 'react';
-import { CORE_SYMBOLS, checkCore, firstMatch } from '../../lib/coreRegex';
+import { CORE_SYMBOLS, checkCore, type CoreSymbol } from '../../lib/coreRegex';
 import { Button, Panel, Verdict } from '../../components/ui';
+import { PatternInput, type PaletteSymbol } from '../../components/PatternInput';
 import { Leaderboard, NicknameGate, useLeaderboard } from '../../components/Leaderboard';
 import { NO_SOLVES, useProgress } from '../../core/progress';
+import { boardTotal } from './content';
 import { GOLF_BOARD, GOLF_PAR, GOLF_PUZZLES, GOLF_STATIONS, golfPar, symbolsMetBy } from './golf';
 
 const LESSON_ID = 'automata-regex';
@@ -37,19 +42,41 @@ function golfScore(station: number, length: number, par: number): number {
   return Math.round(Math.max(base * FLOOR_FRACTION, base - Math.max(0, length - par) * OVER_PAR_COST));
 }
 
-const glossOf = (symbol: string) => CORE_SYMBOLS.find((s) => s.symbol === symbol)?.gloss ?? '';
+/** What a palette button inserts for a symbol; brackets come as a pair with the caret inside. */
+const SPELLING: Record<CoreSymbol, { insert: string; caret?: number }> = {
+  '|': { insert: '|' },
+  '.': { insert: '.' },
+  '[]': { insert: '[]', caret: 1 },
+  '[^]': { insert: '[^]', caret: 2 },
+  '^': { insert: '^' },
+  $: { insert: '$' },
+  '?': { insert: '?' },
+  '+': { insert: '+' },
+  '*': { insert: '*' },
+  '()': { insert: '()', caret: 1 },
+  '{}': { insert: '{}', caret: 1 },
+  '[a-z]': { insert: '-' },
+  '\\': { insert: '\\' },
+};
 
-/** What a palette button inserts for a symbol. Brackets come as a pair, ready to fill. */
-const INSERT: Record<string, string> = { '[]': '[]', '[^]': '[^]', '()': '()', '{}': '{}', '[a-z]': '-' };
+const paletteFor = (symbols: CoreSymbol[]): PaletteSymbol[] =>
+  symbols.map((s) => ({
+    label: s,
+    ...SPELLING[s],
+    gloss: CORE_SYMBOLS.find((c) => c.symbol === s)?.gloss ?? '',
+  }));
 
-function Word({ word, want, regex }: { word: string; want: boolean; regex: RegExp | null }) {
-  const m = regex ? firstMatch(regex, word) : null;
-  const ok = regex ? (m !== null) === want : null;
-  const tone =
-    ok === null ? 'text-ink-300' : ok ? 'text-[var(--color-good)]' : 'text-[var(--color-bad)]';
+type Finder = (word: string) => { index: number; length: number } | null;
+
+function Word({ word, want, find }: { word: string; want: boolean; find: Finder | null }) {
+  const m = find ? find(word) : null;
+  const ok = find ? (m !== null) === want : null;
+  const tone = ok === null ? 'text-ink-300' : ok ? 'text-[var(--color-good)]' : 'text-[var(--color-bad)]';
   return (
     <li className={`flex items-baseline gap-2 font-mono ${tone}`}>
-      <span className="w-4 shrink-0 text-center">{ok === null ? '·' : ok ? '✓' : '✗'}</span>
+      <span className="w-4 shrink-0 text-center" aria-hidden>
+        {ok === null ? '·' : ok ? '✓' : '✗'}
+      </span>
       <span className="text-ink-100">
         {m ? (
           <>
@@ -57,9 +84,7 @@ function Word({ word, want, regex }: { word: string; want: boolean; regex: RegEx
             {m.length > 0 ? (
               <mark className="rounded bg-mach-500/35 px-0.5 text-ink-50">{word.slice(m.index, m.index + m.length)}</mark>
             ) : (
-              <span className="text-mach-400" title="an empty match: the pattern found nothing, successfully">
-                ▏
-              </span>
+              <span className="text-mach-400">▏</span>
             )}
             {word.slice(m.index + m.length)}
           </>
@@ -82,70 +107,67 @@ export function PatternGolf() {
     return first < 0 ? 0 : first;
   });
   const [src, setSrc] = useState('');
-  const [result, setResult] = useState<null | { score: number; length: number; par: number }>(null);
+  const [result, setResult] = useState<null | { score: number; length: number; par: number; src: string }>(null);
 
-  const puzzle = GOLF_PUZZLES[index];
-  const station = GOLF_STATIONS[puzzle.station];
+  const puzzle = GOLF_PUZZLES[index]!;
+  const station = GOLF_STATIONS[puzzle.station]!;
   const par = golfPar(puzzle);
-  const met = useMemo(() => [...symbolsMetBy(puzzle.station)], [puzzle.station]);
+  const palette = useMemo(() => paletteFor([...symbolsMetBy(puzzle.station)]), [puzzle.station]);
   const firstOfStation = GOLF_PUZZLES.findIndex((p) => p.station === puzzle.station) === index;
+  const solvedBefore = !!solvedMap[solveKey(puzzle.id)];
 
   const check = useMemo(() => (src ? checkCore(src) : null), [src]);
-  const regex = check?.ok ? check.regex : null;
-  const allRight =
-    !!regex && puzzle.match.every((w) => regex.test(w)) && puzzle.reject.every((w) => !regex.test(w));
+  const find = check?.ok ? check.find : null;
+  const allRight = !!check?.ok && puzzle.match.every((w) => check.test(w)) && puzzle.reject.every((w) => !check.test(w));
+  const emptyMatch = !!find && [...puzzle.match, ...puzzle.reject].some((w) => find(w)?.length === 0);
 
   const go = (i: number) => {
     setIndex(i);
     setSrc('');
     setResult(null);
   };
+  const next = () => go((index + 1) % GOLF_PUZZLES.length);
 
   const submit = () => {
-    if (!allRight) return;
+    if (!allRight || result?.src === src) return;
     const score = golfScore(puzzle.station, src.length, par);
-    setResult({ score, length: src.length, par });
+    setResult({ score, length: src.length, par, src });
     recordSolve(LESSON_ID, solveKey(puzzle.id), score);
-    const golfSolves = Object.entries({ ...solvedMap, [solveKey(puzzle.id)]: { best: score } }).filter(([k]) =>
-      k.startsWith('golf-'),
-    );
-    const total = golfSolves.reduce((s, [, r]) => s + r.best, 0);
-    void board.submit(total, { solved: golfSolves.length });
+    const { total, solved } = boardTotal(solvedMap, solveKey(puzzle.id), score);
+    void board.submit(total, { solved });
   };
 
-  const solvedIn = (n: number) =>
-    GOLF_PUZZLES.filter((p) => p.station === n && solvedMap[solveKey(p.id)]).length;
+  const solvedIn = (n: number) => GOLF_PUZZLES.filter((p) => p.station === n && solvedMap[solveKey(p.id)]).length;
 
   return (
     <div className="flex flex-col gap-5 xl:flex-row xl:items-start">
       <div className="min-w-0 flex-1">
         {/* The path: every station visible and openable; ✓ when all its holes are done. */}
-        <div className="mb-3 flex flex-wrap gap-1.5" aria-label="Stations">
+        <div className="mb-3 flex flex-wrap gap-1.5" role="group" aria-label="Stations">
           {GOLF_STATIONS.map((s, n) => {
             const total = GOLF_PUZZLES.filter((p) => p.station === n).length;
-            const done = solvedIn(n);
             const here = n === puzzle.station;
             return (
               <button
                 key={s.title}
                 onClick={() => go(GOLF_PUZZLES.findIndex((p) => p.station === n))}
-                title={s.title}
-                className={`min-h-9 rounded-lg border px-2.5 py-1 font-mono text-sm transition
-                  ${here ? 'border-mach-500 bg-mach-500/15 text-ink-100' : 'border-ink-600 text-ink-400'}`}
+                aria-label={s.title}
+                aria-current={here ? 'step' : undefined}
+                className={`tile !text-sm ${here ? '!border-mach-500 !bg-mach-500/15' : '!text-ink-400'}`}
               >
                 {s.symbol ?? 'abc'}
-                {done === total && <span className="ml-1 text-[var(--color-good)]">✓</span>}
+                {solvedIn(n) === total && <span className="ml-1 text-[var(--color-good)]">✓</span>}
               </button>
             );
           })}
         </div>
 
         <Panel>
-          {firstOfStation && (
-            <div className="mb-4 rounded-xl border border-mach-500/40 bg-mach-500/8 p-3 text-sm text-ink-200">
-              <b className="mr-1 font-mono text-mach-400">{station.symbol ?? 'abc'}</b> {station.intro}
-            </div>
-          )}
+          <div className={`mb-4 rounded-xl border p-3 text-sm ${firstOfStation ? 'border-mach-500/40 bg-mach-500/8 text-ink-200' : 'border-ink-700 text-ink-400'}`}>
+            <b className="mr-1 font-mono text-mach-400">{station.symbol ?? 'abc'}</b>
+            <span className="mr-1 font-semibold">{station.title}.</span>
+            {station.intro}
+          </div>
 
           <div className="mb-3 flex items-start justify-between gap-3">
             <div>
@@ -156,7 +178,7 @@ export function PatternGolf() {
             </div>
             <span className="shrink-0 font-mono text-xs text-ink-500">
               {index + 1}/{GOLF_PUZZLES.length}
-              {solvedMap[solveKey(puzzle.id)] && <span className="ml-2 text-[var(--color-good)]">✓</span>}
+              {solvedBefore && <span className="ml-2 text-[var(--color-good)]">✓</span>}
             </span>
           </div>
 
@@ -165,7 +187,7 @@ export function PatternGolf() {
               <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--color-good)]">Match all of these</p>
               <ul className="flex flex-col gap-1">
                 {puzzle.match.map((w) => (
-                  <Word key={w} word={w} want regex={regex} />
+                  <Word key={w} word={w} want find={find} />
                 ))}
               </ul>
             </div>
@@ -173,58 +195,44 @@ export function PatternGolf() {
               <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--color-bad)]">…and none of these</p>
               <ul className="flex flex-col gap-1">
                 {puzzle.reject.map((w) => (
-                  <Word key={w} word={w} want={false} regex={regex} />
+                  <Word key={w} word={w} want={false} find={find} />
                 ))}
               </ul>
             </div>
           </div>
+          {emptyMatch && (
+            <p className="mt-2 text-xs text-ink-400">
+              <span className="text-mach-400">▏</span> marks an empty match: the pattern found "nothing" there, and
+              that counts as finding something. That is why <code>a*</code> on its own matches every word.
+            </p>
+          )}
 
-          <input
-            value={src}
-            onChange={(e) => {
-              setSrc(e.target.value);
-              setResult(null);
-            }}
-            onKeyDown={(e) => e.key === 'Enter' && submit()}
-            placeholder="type a pattern"
-            spellCheck={false}
-            autoCapitalize="off"
-            autoCorrect="off"
-            aria-label="Your pattern"
-            className="mt-4 w-full rounded-xl border border-ink-600 bg-ink-950 px-4 py-3 font-mono text-xl
-              text-ink-100 outline-none placeholder:text-ink-600 focus:border-mach-500"
-          />
-
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {met.map((s) => (
-              <button
-                key={s}
-                title={glossOf(s)}
-                className="tile !min-w-9 !py-1 font-mono"
-                onClick={() => {
-                  setSrc((v) => v + (INSERT[s] ?? s));
-                  setResult(null);
-                }}
-              >
-                {s}
-              </button>
-            ))}
-            <button className="tile !min-w-9 !py-1 !text-sm" onClick={() => setSrc((v) => v.slice(0, -1))} disabled={!src}>
-              ⌫
-            </button>
+          <div className="mt-4">
+            <PatternInput
+              value={src}
+              onChange={(v) => {
+                setSrc(v);
+                setResult(null);
+              }}
+              palette={palette}
+              placeholder="type a pattern"
+              ariaLabel="Your pattern"
+              onEnter={submit}
+              inputClassName="font-mono text-xl"
+            />
           </div>
 
           {check && !check.ok && (
-            <p className="mt-3 text-sm text-[var(--color-bad)]" role="status">
+            <p className={`mt-3 text-sm ${check.incomplete ? 'text-ink-400' : 'text-[var(--color-bad)]'}`} role="status">
               {check.message}
             </p>
           )}
 
           <div className="mt-4 flex flex-wrap gap-2">
-            <Button variant="primary" onClick={submit} disabled={!allRight}>
-              {allRight ? 'Every word is right — submit' : regex ? 'Not every word is right yet' : 'Submit'}
+            <Button variant="primary" onClick={submit} disabled={!allRight || result?.src === src}>
+              {allRight ? 'Every word is right — submit' : find ? 'Not every word is right yet' : 'Submit'}
             </Button>
-            <Button onClick={() => go((index + 1) % GOLF_PUZZLES.length)}>Skip</Button>
+            <Button onClick={next}>{solvedBefore || result ? 'Next →' : 'Skip'}</Button>
           </div>
 
           {result && (
@@ -237,9 +245,6 @@ export function PatternGolf() {
                 )}
                 {puzzle.note && <p className="mt-1 text-ink-200">{puzzle.note}</p>}
               </Verdict>
-              <Button variant="primary" className="mt-3" onClick={() => go((index + 1) % GOLF_PUZZLES.length)}>
-                Next →
-              </Button>
             </div>
           )}
         </Panel>
@@ -249,10 +254,11 @@ export function PatternGolf() {
         <Panel>
           <h4 className="mb-2 text-sm font-semibold text-ink-200">Which regex is this?</h4>
           <p className="text-sm leading-relaxed text-ink-300">
-            Just "regular expression". Everything here works the same in every common flavor —
-            JavaScript, Python, Java, Go, PCRE, POSIX <code>grep -E</code>. Extras that only some
-            flavors have (<code>\d</code>, <code>\b</code>, lookahead, backreferences) are refused,
-            with a note saying what to write instead.
+            Just "regular expression". Everything accepted here works the same in every common flavor —
+            JavaScript, Python, Java, Go, PCRE, POSIX <code>grep -E</code>. Extras that only some flavors have
+            (<code>\d</code>, <code>\b</code>, lookahead, backreferences) are refused, with a note saying what to
+            write instead. Where flavors differ on WHICH part of a word is the match, the highlight shows the
+            longest match at the leftmost place, as <code>grep -o</code> does.
           </p>
           <h4 className="mb-2 mt-4 text-sm font-semibold text-ink-200">And the regex of the theory?</h4>
           <p className="mb-2 text-sm text-ink-300">
@@ -267,9 +273,10 @@ export function PatternGolf() {
             <li>^ and $ remove the (any)* on their side</li>
           </ul>
           <p className="mt-3 border-t border-ink-700 pt-2 text-xs text-ink-500">
-            Backreferences are the one popular extra that is NOT a shorthand: <code>(a*)b\1</code>{' '}
-            describes a language no finite machine can recognise. That is level 8's wall, from the
-            other side.
+            Backreferences are the one popular extra that is NOT a shorthand: <code>(a*)b\1</code> describes a
+            language no finite machine can recognise. That is level 8's wall, from the other side. And the
+            matching here is done the way the lesson teaches: your pattern becomes a machine, which reads each
+            word once.
           </p>
         </Panel>
 

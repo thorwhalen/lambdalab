@@ -10,52 +10,75 @@
  * (Thompson → subset construction → minimisation), so picture and pattern can
  * never disagree.
  *
- * No score and no rung: this sheet is practice.
+ * No score and no rung: this sheet is practice. The list carries no sigils: the
+ * stars are the one thing worth seeing at a glance, and they are there.
+ *
+ * On a phone the list is a single select with Prev / Next, so picking an exercise
+ * never pushes the exercise itself off the screen.
  */
 import { useMemo, useState } from 'react';
 import { parseRegex } from '../../lib/automata/regexParse';
 import { regexToNFA } from '../../lib/automata/thompson';
 import { equivalent } from '../../lib/automata/equivalence';
-import { minimize } from '../../lib/automata/minimize';
+import { minimalStateCount, minimize } from '../../lib/automata/minimize';
+import { accepts } from '../../lib/automata/simulate';
 import { forDisplay } from '../../lib/automata/layout';
 import { AutomatonCanvas } from '../../components/AutomatonCanvas';
 import { Button, Panel, Verdict } from '../../components/ui';
+import { PatternInput, type PaletteSymbol } from '../../components/PatternInput';
 import { BUILD_EXERCISES, type BuildExercise } from './exercises';
 
 const STARS = (n: number) => '★'.repeat(n) + '☆'.repeat(5 - n);
 const show = (s: string) => (s === '' ? 'ε' : s);
 
-/** The theory regex's symbols, offered as buttons next to the alphabet. */
-const OPERATORS = ['(', ')', '|', '*', '+', '?', 'ε'];
+/** The theory regex's symbols, offered next to the alphabet. */
+const OPERATORS: PaletteSymbol[] = [
+  { label: '( )', insert: '()', caret: 1, gloss: 'group a piece' },
+  { label: '|', insert: '|', gloss: 'or: either side' },
+  { label: '*', insert: '*', gloss: 'any number of the thing before, including none' },
+  { label: '+', insert: '+', gloss: 'one or more of the thing before' },
+  { label: '?', insert: '?', gloss: 'the thing before is optional' },
+  { label: 'ε', insert: 'ε', gloss: 'the empty string' },
+];
 
 function Answer({ ex }: { ex: BuildExercise }) {
-  const machine = useMemo(() => {
+  const { machine, complete } = useMemo(() => {
     const p = parseRegex(ex.regex);
-    return p.ok ? forDisplay(minimize(regexToNFA(p.node))) : null;
+    if (!p.ok) return { machine: null, complete: 0 };
+    const nfa = regexToNFA(p.node);
+    return { machine: forDisplay(minimize(nfa)), complete: minimalStateCount(nfa) };
   }, [ex.regex]);
 
   return (
-    <details className="mt-4 rounded-xl border border-ink-700 bg-ink-900/40 p-3">
-      <summary className="cursor-pointer text-sm font-medium text-ink-300">Show me the answer</summary>
+    <details className="group mt-4 rounded-xl border border-ink-700 bg-ink-900/40 px-3">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-sm font-medium text-ink-300">
+        <span className="inline-block transition group-open:rotate-90" aria-hidden>
+          ▸
+        </span>
+        Show me the answer
+      </summary>
       <div className="mt-3">
         <p className="text-xs uppercase tracking-wide text-ink-500">As a pattern</p>
         <p className="math mt-1 break-all text-xl text-ink-100">{ex.regex}</p>
         {machine && (
           <>
             <p className="mt-4 text-xs uppercase tracking-wide text-ink-500">
-              As the smallest machine — {machine.states.length} state{machine.states.length === 1 ? '' : 's'}
+              As the smallest machine — {complete} state{complete === 1 ? '' : 's'}
+              {complete > machine.states.length && `, ${machine.states.length} drawn`}
             </p>
             <div className="mt-2">
               <AutomatonCanvas automaton={machine} readOnly height={300} />
             </div>
             <p className="mt-1 text-xs text-ink-600">
-              Computed from the pattern, not drawn by hand. Any arrow that is missing goes to a trap state
-              that rejects forever; it is left out to keep the picture clean.
+              Computed from the pattern, not drawn by hand.
+              {complete > machine.states.length &&
+                ' The one state not drawn is the trap: every missing arrow goes there, and it rejects forever. It is left out to keep the picture clean.'}
             </p>
           </>
         )}
         {ex.note && <p className="mt-3 text-sm leading-relaxed text-ink-200">{ex.note}</p>}
       </div>
+      <div className="pb-3" />
     </details>
   );
 }
@@ -71,6 +94,15 @@ function Exercise({ ex }: { ex: BuildExercise }) {
     return p.ok ? regexToNFA(p.node) : null;
   }, [ex.regex]);
 
+  // Live: once the pattern parses, every example ticks over, as in RegexLab.
+  const live = useMemo(() => {
+    if (!src.trim()) return null;
+    const p = parseRegex(src);
+    return p.ok ? regexToNFA(p.node) : null;
+  }, [src]);
+  const mark = (s: string, want: boolean) =>
+    live ? (accepts(live, s) === want ? ' ✓' : ' ✗') : '';
+
   const check = () => {
     const p = parseRegex(src);
     if (!p.ok) return setVerdict({ ok: false, message: p.message });
@@ -83,7 +115,7 @@ function Exercise({ ex }: { ex: BuildExercise }) {
     <Panel>
       <div className="flex items-start justify-between gap-3">
         <p className="text-lg text-ink-100">{ex.title}</p>
-        <span className="shrink-0 text-sm text-mach-400" aria-label={`${ex.stars} of 5 stars`}>
+        <span role="img" className="shrink-0 text-sm text-mach-400" aria-label={`${ex.stars} of 5 stars`}>
           {STARS(ex.stars)}
         </span>
       </div>
@@ -98,48 +130,46 @@ function Exercise({ ex }: { ex: BuildExercise }) {
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-        <div>
-          <span className="text-[var(--color-good)]">yes:</span>{' '}
-          <span className="font-mono text-ink-300">{ex.accept.map(show).join('  ')}</span>
-        </div>
-        <div>
-          <span className="text-[var(--color-bad)]">no:</span>{' '}
-          <span className="font-mono text-ink-300">{ex.reject.map(show).join('  ')}</span>
-        </div>
+        {([
+          ['yes', ex.accept, true],
+          ['no', ex.reject, false],
+        ] as const).map(([word, list, want]) => (
+          <div key={word}>
+            <span className={want ? 'text-[var(--color-good)]' : 'text-[var(--color-bad)]'}>{word}:</span>
+            <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 font-mono">
+              {list.map((s) => {
+                const m = mark(s, want);
+                return (
+                  <li
+                    key={s}
+                    className={m === ' ✓' ? 'text-[var(--color-good)]' : m === ' ✗' ? 'text-[var(--color-bad)]' : 'text-ink-300'}
+                  >
+                    {show(s)}
+                    {m}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
       </div>
 
       <div className="mt-4">
-        <input
+        <PatternInput
           value={src}
-          onChange={(e) => {
-            setSrc(e.target.value);
+          onChange={(v) => {
+            setSrc(v);
             setVerdict(null);
           }}
-          onKeyDown={(e) => e.key === 'Enter' && src.trim() && check()}
+          palette={[...ex.alphabet.map((c) => ({ label: c, insert: c, gloss: ex.legend[c] ?? '' })), ...OPERATORS]}
           placeholder="your pattern (optional)"
-          spellCheck={false}
-          autoCapitalize="off"
-          aria-label="Your pattern"
-          className="math w-full rounded-xl border border-ink-600 bg-ink-950 px-4 py-2.5 text-lg text-ink-100
-            outline-none placeholder:text-ink-600 focus:border-mach-500"
+          ariaLabel="Your pattern"
+          onEnter={() => src.trim() && check()}
+          inputClassName="math text-lg"
         />
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {[...ex.alphabet, ...OPERATORS].map((s) => (
-            <button
-              key={s}
-              className="tile !min-w-9 !py-1"
-              onClick={() => {
-                setSrc((v) => v + s);
-                setVerdict(null);
-              }}
-            >
-              {s}
-            </button>
-          ))}
-          <Button onClick={check} disabled={!src.trim()} className="ml-auto">
-            Check
-          </Button>
-        </div>
+        <Button onClick={check} disabled={!src.trim()} className="mt-2">
+          Check
+        </Button>
       </div>
 
       {verdict && verdict.ok && (
@@ -172,12 +202,33 @@ function Exercise({ ex }: { ex: BuildExercise }) {
 }
 
 export function ExerciseSheet() {
-  const [id, setId] = useState(BUILD_EXERCISES[0].id);
-  const ex = BUILD_EXERCISES.find((x) => x.id === id) ?? BUILD_EXERCISES[0];
+  const [id, setId] = useState(BUILD_EXERCISES[0]!.id);
+  const at = Math.max(0, BUILD_EXERCISES.findIndex((x) => x.id === id));
+  const ex = BUILD_EXERCISES[at]!;
+  const step = (d: number) => setId(BUILD_EXERCISES[(at + d + BUILD_EXERCISES.length) % BUILD_EXERCISES.length]!.id);
 
   return (
     <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
-      <nav className="flex flex-col gap-1 lg:w-64 lg:shrink-0" aria-label="Exercises">
+      {/* Phone: one select, so the exercise stays on screen. */}
+      <div className="flex items-center gap-2 lg:hidden">
+        <label className="sr-only" htmlFor="exercise-pick">
+          Exercise
+        </label>
+        <select
+          id="exercise-pick"
+          value={id}
+          onChange={(e) => setId(e.target.value)}
+          className="min-h-11 min-w-0 flex-1 rounded-lg border border-ink-600 bg-ink-950 px-3 text-base text-ink-100"
+        >
+          {BUILD_EXERCISES.map((x) => (
+            <option key={x.id} value={x.id}>
+              {'★'.repeat(x.stars)} {x.title}
+            </option>
+          ))}
+        </select>
+      </div>
+      {/* Wide screens: the list beside the exercise. */}
+      <nav className="hidden flex-col gap-1 lg:flex lg:w-64 lg:shrink-0" aria-label="Exercises">
         {BUILD_EXERCISES.map((x) => (
           <button
             key={x.id}
@@ -194,6 +245,10 @@ export function ExerciseSheet() {
       <div className="min-w-0 flex-1">
         {/* key: a fresh Exercise (empty input, closed answer) for each pick. */}
         <Exercise key={ex.id} ex={ex} />
+        <div className="mt-3 flex justify-between">
+          <Button onClick={() => step(-1)}>‹ Previous</Button>
+          <Button onClick={() => step(1)}>Next ›</Button>
+        </div>
       </div>
     </div>
   );

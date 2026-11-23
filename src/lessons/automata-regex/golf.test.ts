@@ -7,12 +7,16 @@
  *      uses that station's new symbol — so the path never asks for a symbol early,
  *      and every station's puzzles really exercise its symbol.
  *   4. Every station has at least two puzzles, so each symbol lands before the next.
- *   5. The lists are not degenerate: the left list is non-empty, and the right list
+ *   5. Par is honest and the new symbol is needed, to 3 characters (deeper: golf.audit.test.ts).
+ *   6. The lists are not degenerate: the left list is non-empty, and the right list
  *      is non-empty (otherwise "." or "" would win every hole).
  */
 import { describe, expect, it } from 'vitest';
 import { checkCore } from '../../lib/coreRegex';
 import { GOLF_PUZZLES, GOLF_STATIONS, golfPar, symbolsMetBy } from './golf';
+import { shortestSolutions } from './golfSearch';
+
+const SHALLOW = 3;
 
 describe('pattern golf bank', () => {
   it('has unique ids', () => {
@@ -46,8 +50,8 @@ describe('pattern golf bank', () => {
           const r = checkCore(sol);
           expect(r.ok, r.ok ? '' : r.message).toBe(true);
           if (!r.ok) return;
-          for (const w of p.match) expect(r.regex.test(w), `${sol} misses "${w}"`).toBe(true);
-          for (const w of p.reject) expect(r.regex.test(w), `${sol} wrongly finds "${w}"`).toBe(false);
+          for (const w of p.match) expect(r.test(w), `${sol} misses "${w}"`).toBe(true);
+          for (const w of p.reject) expect(r.test(w), `${sol} wrongly finds "${w}"`).toBe(false);
         });
       }
 
@@ -63,19 +67,17 @@ describe('pattern golf bank', () => {
         expect(fits, `no solution of ${p.id} stays within ${[...met].join(' ')} and uses ${fresh}`).toBe(true);
       });
 
-      it('cannot be beaten by a shorter plain-letter pattern', () => {
-        // Golf rewards shortcuts. If a bare substring shorter than par sorts every
-        // word, the lists are too loose and par is a lie (it caught "at" beating "cat").
+      it('cannot be beaten, or reached without its new symbol, by a pattern of 3 characters or fewer', () => {
+        // Golf rewards shortcuts, so par is a claim. The full search is golf.audit.test.ts;
+        // this shallow pass runs every time and caught "at" beating "cat".
         const par = golfPar(p);
-        const solves = (lit: string) =>
-          p.match.every((w) => w.includes(lit)) && p.reject.every((w) => !w.includes(lit));
-        for (const w of p.match) {
-          for (let len = 1; len < par; len++) {
-            for (let i = 0; i + len <= w.length; i++) {
-              const lit = w.slice(i, i + len);
-              expect(solves(lit), `"${lit}" (${len} chars) solves ${p.id}, under par ${par}`).toBe(false);
-            }
-          }
+        const met = symbolsMetBy(p.station);
+        const beaten = shortestSolutions(p, met, Math.min(par - 1, SHALLOW));
+        expect(beaten.length, `beaten by ${JSON.stringify(beaten.examples)}`).toBeNull();
+        const fresh = GOLF_STATIONS[p.station]!.symbol;
+        if (fresh) {
+          const without = shortestSolutions(p, new Set([...met].filter((s) => s !== fresh)), Math.min(par, SHALLOW));
+          expect(without.length, `reached without ${fresh}: ${JSON.stringify(without.examples)}`).toBeNull();
         }
       });
 

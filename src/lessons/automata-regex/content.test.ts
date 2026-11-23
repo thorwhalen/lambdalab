@@ -122,3 +122,21 @@ describe('automata language bank', () => {
     });
   }
 });
+
+describe('solve keys: one activity per prefix', () => {
+  it('counts builder and regex solves toward their rung, golf toward none', async () => {
+    const { solveLevel } = await import('./content');
+    expect(solveLevel('a2-even-a')).toBe(2);
+    expect(solveLevel('re-a2-even-a')).toBe(2);
+    expect(solveLevel('golf-g-cat')).toBe(0);
+  });
+
+  it('totals each board over its own solves only, never lowering a best', async () => {
+    const { boardTotal } = await import('./content');
+    const solved = { 'a1-only-a': { best: 100 }, 're-a1-only-a': { best: 50 }, 'golf-g-cat': { best: 120 } };
+    expect(boardTotal(solved, 'golf-g-oo', 80)).toEqual({ total: 200, solved: 2 });
+    expect(boardTotal(solved, 'golf-g-cat', 10)).toEqual({ total: 120, solved: 1 });
+    expect(boardTotal(solved, 're-a2-even-a', 30)).toEqual({ total: 80, solved: 2 });
+    expect(boardTotal(solved, 'a2-even-a', 1)).toEqual({ total: 101, solved: 2 });
+  });
+});

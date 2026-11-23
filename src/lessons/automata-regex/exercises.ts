@@ -202,7 +202,7 @@ export const BUILD_EXERCISES: BuildExercise[] = [
     regex: '(l(lr)*r|r(rl)*l)*',
     accept: ['', 'lr', 'llrr', 'lrlr', 'rrll', 'llrlrr'],
     reject: ['l', 'rr', 'lllrrr', 'llrrr', 'rrrlll'],
-    note: 'Each extra step the referee allows costs the machine two more states; allow any number and it needs infinitely many — that is the wall at level 8. Every referee makes the game finite.',
+    note: 'Each extra step the referee allows costs the machine two more states; allow any number and it needs infinitely many — that is the wall at level 8. Every referee makes the machine finite.',
   },
   {
     id: 'x-spy',
@@ -243,7 +243,7 @@ export const BUILD_EXERCISES: BuildExercise[] = [
     regex: 'ε|a|b|a(a|b)*a|b(a|b)*b',
     accept: ['', 'a', 'b', 'aa', 'aba', 'abba', 'baab', 'bab'],
     reject: ['ab', 'ba', 'aab', 'abb', 'baa', 'abab'],
-    note: 'It looks like counting, and counting is exactly what finite machines cannot do. But the counts can never differ by more than one: every switch from a to b must be undone before you switch again. So all that matters is whether the walk ends on the letter it started with. Five states.',
+    note: 'It looks like counting, and counting is exactly what finite machines cannot do. But the counts can never differ by more than one: an "ab" and a "ba" must take turns, so the two counts can never differ by more than one. All that matters is whether the walk ends on the letter it started with. Five states.',
   },
   {
     id: 'x-wheel',

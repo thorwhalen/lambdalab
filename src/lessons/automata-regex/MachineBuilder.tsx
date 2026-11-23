@@ -36,7 +36,8 @@ import {
   LADDER,
   LANGUAGE_PUZZLES,
   MAX_LEVEL,
-  puzzleLevel,
+  boardTotal,
+  solveLevel,
   type LanguagePuzzle,
 } from './content';
 
@@ -148,11 +149,10 @@ export function MachineBuilder({ level }: { level: number }) {
       setWrong(null);
       recordSolve(LESSON_ID, puzzle.id, pts);
 
-      const bests = { ...solvedMap, [puzzle.id]: { best: pts, attempts: 1, solvedAt: Date.now() } };
-      const total = Object.values(bests).reduce((s, r) => s + r.best, 0);
-      void board.submit(total, { solved: Object.keys(bests).length });
+      const { total, solved } = boardTotal(solvedMap, puzzle.id, pts);
+      void board.submit(total, { solved });
 
-      const up = checkAdvance(LESSON_ID, puzzle.level, LADDER[puzzle.level - 1].toAdvance, puzzleLevel, MAX_LEVEL);
+      const up = checkAdvance(LESSON_ID, puzzle.level, LADDER[puzzle.level - 1].toAdvance, solveLevel, MAX_LEVEL);
       if (up) setUnlocked(up);
     } else {
       setWrong({ counterexample: eq.counterexample, weAccept: eq.acceptedBy === 'a' });
