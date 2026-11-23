@@ -16,6 +16,8 @@ import { RESOURCES } from './resources';
 import { MachineBuilder } from './MachineBuilder';
 import { RegexLab } from './RegexLab';
 import { ConvertLab } from './ConvertLab';
+import { ExerciseSheet } from './ExerciseSheet';
+import { PatternGolf } from './PatternGolf';
 
 export const automataLesson: Lesson = {
   id: 'automata-regex',
@@ -81,6 +83,24 @@ export function AutomataPage() {
               subtitle="The same languages, written as patterns instead of drawn as machines."
             >
               <RegexLab level={level} />
+            </Activity>
+          )}
+
+          {level >= 3 && (
+            <Activity
+              title="Build this"
+              subtitle="Stories to turn into machines and patterns, from a lamp switch to the fiendish. Check your pattern if you like; the answer, as a pattern and as a machine, is there when you ask for it."
+            >
+              <ExerciseSheet />
+            </Activity>
+          )}
+
+          {level >= 3 && (
+            <Activity
+              title="Pattern golf"
+              subtitle="One pattern that finds something in every word on the left and nothing in any word on the right. Each station teaches one new symbol."
+            >
+              <PatternGolf />
             </Activity>
           )}
 

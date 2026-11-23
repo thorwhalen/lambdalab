@@ -126,7 +126,14 @@ export function RegexLab({ level }: { level: number }) {
     const total = Object.values(bests).reduce((s, r) => s + r.best, 0);
     void board.submit(total, { solved: Object.keys(bests).length });
 
-    const up = checkAdvance(LESSON_ID, puzzle.level, LADDER[puzzle.level - 1].toAdvance, puzzleLevel, MAX_LEVEL);
+    // Regex solves are stored as `re-<id>`: strip the prefix, or they never count toward the rung.
+    const up = checkAdvance(
+      LESSON_ID,
+      puzzle.level,
+      LADDER[puzzle.level - 1].toAdvance,
+      (id) => puzzleLevel(id.replace(/^re-/, '')),
+      MAX_LEVEL,
+    );
     if (up) setUnlocked(up);
   };
 
