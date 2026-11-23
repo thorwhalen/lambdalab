@@ -29,7 +29,9 @@ import {
   MAX_LEVEL,
   REGEX_BOARD,
   REGEX_PAR,
-  puzzleLevel,
+  boardTotal,
+  solveLevel,
+  solvedLanguage,
 } from './content';
 
 const LESSON_ID = 'automata-regex';
@@ -122,11 +124,10 @@ export function RegexLab({ level }: { level: number }) {
     setResult({ ok: true, score: pts, size });
     recordSolve(LESSON_ID, `re-${puzzle.id}`, pts);
 
-    const bests = { ...solvedMap, [`re-${puzzle.id}`]: { best: pts, attempts: 1, solvedAt: Date.now() } };
-    const total = Object.values(bests).reduce((s, r) => s + r.best, 0);
-    void board.submit(total, { solved: Object.keys(bests).length });
+    const { total, solved } = boardTotal(solvedMap, `re-${puzzle.id}`, pts);
+    void board.submit(total, { solved });
 
-    const up = checkAdvance(LESSON_ID, puzzle.level, LADDER[puzzle.level - 1].toAdvance, puzzleLevel, MAX_LEVEL);
+    const up = checkAdvance(LESSON_ID, puzzle.level, LADDER[puzzle.level - 1].toAdvance, solveLevel, MAX_LEVEL, solvedLanguage);
     if (up) setUnlocked(up);
   };
 

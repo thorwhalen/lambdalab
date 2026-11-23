@@ -11,11 +11,13 @@ import { Aha, Panel } from '../../components/ui';
 import { Activity, LessonShell } from '../../components/LessonShell';
 import { NO_SOLVES, useProgress } from '../../core/progress';
 import type { Lesson } from '../../core/types';
-import { LADDER, LANGUAGE_PUZZLES, puzzleLevel } from './content';
+import { LADDER, LANGUAGE_PUZZLES, solveLevel, solvedLanguage } from './content';
 import { RESOURCES } from './resources';
 import { MachineBuilder } from './MachineBuilder';
 import { RegexLab } from './RegexLab';
 import { ConvertLab } from './ConvertLab';
+import { ExerciseSheet } from './ExerciseSheet';
+import { PatternGolf } from './PatternGolf';
 
 export const automataLesson: Lesson = {
   id: 'automata-regex',
@@ -58,9 +60,9 @@ function Hook() {
 export function AutomataPage() {
   const solved = useProgress((s) => s.lessons['automata-regex']?.solved ?? NO_SOLVES);
 
-  // Regex solves are keyed `re-<id>`; both count toward the rung they belong to.
+  // A language counts once toward its rung, whether built or written; golf has its own path.
   const solvedAt = (level: number) =>
-    Object.keys(solved).filter((id) => puzzleLevel(id.replace(/^re-/, '')) === level).length;
+    new Set(Object.keys(solved).filter((key) => solveLevel(key) === level).map(solvedLanguage)).size;
 
   const wall = LANGUAGE_PUZZLES.find((p) => p.impossible);
 
@@ -81,6 +83,24 @@ export function AutomataPage() {
               subtitle="The same languages, written as patterns instead of drawn as machines."
             >
               <RegexLab level={level} />
+            </Activity>
+          )}
+
+          {level >= 3 && (
+            <Activity
+              title="Build this"
+              subtitle="Stories to turn into machines and patterns, from a lamp switch to the fiendish. Check your pattern if you like; the answer, as a pattern and as a machine, is there when you ask for it."
+            >
+              <ExerciseSheet />
+            </Activity>
+          )}
+
+          {level >= 3 && (
+            <Activity
+              title="Pattern golf"
+              subtitle="One pattern that finds something in every word on the left and nothing in any word on the right. Each station teaches one new symbol."
+            >
+              <PatternGolf />
             </Activity>
           )}
 

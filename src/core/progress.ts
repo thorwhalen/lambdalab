@@ -44,8 +44,17 @@ interface ProgressStore extends Progress {
    */
   recordSolve: (lessonId: string, puzzleId: string, score: number) => boolean;
   recordAttempt: (lessonId: string, puzzleId: string) => void;
-  /** Count of solved puzzles at a given level, per the puzzle->level map supplied. */
-  solvedAtLevel: (lessonId: string, levelOf: (puzzleId: string) => number, level: number) => number;
+  /**
+   * Count of solved puzzles at a given level, per the puzzle->level map supplied.
+   * `sameAs` maps a solve key to what it is a solve OF, so two activities solving
+   * the same puzzle count once (default: every key is its own puzzle).
+   */
+  solvedAtLevel: (
+    lessonId: string,
+    levelOf: (puzzleId: string) => number,
+    level: number,
+    sameAs?: (puzzleId: string) => string,
+  ) => number;
   /** Unlock the next rung. Idempotent; never goes backwards. */
   advanceTo: (lessonId: string, level: number) => void;
   markSeen: (lessonId: string, sectionId: string) => void;
@@ -99,9 +108,9 @@ export const useProgress = create<ProgressStore>()(
         }));
       },
 
-      solvedAtLevel: (lessonId, levelOf, level) => {
+      solvedAtLevel: (lessonId, levelOf, level, sameAs = (id) => id) => {
         const lesson = get().lesson(lessonId);
-        return Object.keys(lesson.solved).filter((id) => levelOf(id) === level).length;
+        return new Set(Object.keys(lesson.solved).filter((id) => levelOf(id) === level).map(sameAs)).size;
       },
 
       advanceTo: (lessonId, level) => {
@@ -143,9 +152,10 @@ export function checkAdvance(
   toAdvance: number,
   levelOf: (puzzleId: string) => number,
   maxLevel: number,
+  sameAs?: (puzzleId: string) => string,
 ): number | null {
   const store = useProgress.getState();
-  const solved = store.solvedAtLevel(lessonId, levelOf, currentLevel);
+  const solved = store.solvedAtLevel(lessonId, levelOf, currentLevel, sameAs);
   const reached = store.lesson(lessonId).levelReached;
   if (solved >= toAdvance && reached === currentLevel && currentLevel < maxLevel) {
     store.advanceTo(lessonId, currentLevel + 1);

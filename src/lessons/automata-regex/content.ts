@@ -446,3 +446,45 @@ export const CONVERT_PAR = 1500;
 
 export const puzzleLevel = (id: string): number =>
   LANGUAGE_PUZZLES.find((p) => p.id === id)?.level ?? 0;
+
+/**
+ * The lesson's solve map holds every activity's solves, told apart by key:
+ * `<id>` for the machine builder, `re-<id>` for RegexLab, `golf-<id>` for Pattern
+ * golf. This is the one place that reads those prefixes.
+ */
+export type SolveKind = 'build' | 'regex' | 'golf';
+
+export function solveKind(key: string): SolveKind {
+  return key.startsWith('golf-') ? 'golf' : key.startsWith('re-') ? 'regex' : 'build';
+}
+
+/**
+ * The ladder rung a solve counts toward; golf solves count toward none, since
+ * golf has its own path. A language solved both as a machine and as a pattern
+ * counts once (pass `solvedLanguage` as the identity).
+ */
+export function solveLevel(key: string): number {
+  const kind = solveKind(key);
+  return kind === 'golf' ? 0 : puzzleLevel(kind === 'regex' ? key.slice(3) : key);
+}
+
+/** What a solve is a solve OF: the builder and RegexLab solving one language count once toward a rung. */
+export function solvedLanguage(key: string): string {
+  return solveKind(key) === 'regex' ? key.slice(3) : key;
+}
+
+/**
+ * One activity's leaderboard total after a solve: the sum of its own bests only,
+ * with this solve's score folded in as a maximum (a worse re-solve never lowers it).
+ */
+export function boardTotal(
+  solved: Readonly<Record<string, { best: number }>>,
+  key: string,
+  score: number,
+): { total: number; solved: number } {
+  const kind = solveKind(key);
+  const bests = new Map<string, number>();
+  for (const [k, r] of Object.entries(solved)) if (solveKind(k) === kind) bests.set(k, r.best);
+  bests.set(key, Math.max(score, bests.get(key) ?? 0));
+  return { total: [...bests.values()].reduce((a, b) => a + b, 0), solved: bests.size };
+}

@@ -64,6 +64,7 @@ KNOWN_BOARDS = frozenset(
         "automata-regex.build",
         "automata-regex.regex",
         "automata-regex.convert",
+        "automata-regex.golf",
     }
 )
 

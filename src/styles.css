@@ -113,9 +113,19 @@ body {
     background 120ms ease;
   user-select: none;
 }
-.tile:hover {
-  border-color: var(--color-lam-400);
-  transform: translateY(-1px);
+/* Hover only where there is one: on touch, :hover sticks to the last-tapped tile and reads as selected. */
+@media (hover: hover) and (pointer: fine) {
+  .tile:hover {
+    border-color: var(--color-lam-400);
+    transform: translateY(-1px);
+  }
+}
+/* Touch first: every tile is a 44px target on a coarse pointer, whatever utility classes shrink it. */
+@media (pointer: coarse) {
+  .tile {
+    min-width: 2.75rem !important;
+    min-height: 2.75rem !important;
+  }
 }
 .tile:active {
   transform: translateY(0) scale(0.97);

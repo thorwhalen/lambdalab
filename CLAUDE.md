@@ -33,6 +33,7 @@ and expect them to stay consistent.
 | `src/core/leaderboard.ts` | API client; **degrades to a localStorage board** when the backend is absent |
 | `src/lib/automata/` | simulate, regexParse, subset, thompson, minimize, equivalence, toRegex |
 | `src/lib/logic/` | parse, evaluate, models, equivalence, english |
+| `src/lib/coreRegex/` | the *practical* regex, restricted to the core every flavor shares; reports which special symbols a pattern uses (Pattern golf) |
 | `src/components/` | shared UI: `AutomatonCanvas`, `VennPlayground`, `LittleWorld`, `FormulaBuilder`, `LessonShell` |
 | `src/lessons/<id>/` | `content.ts` (ladder + puzzles), `content.test.ts`, `resources.ts`, activity components, `index.tsx` |
 | `src/lessons/registry.ts` | the course map — every module, including unbuilt ones |
@@ -49,6 +50,11 @@ puzzles, the test must still pass.
 
 - set-logic: no distractor may be equivalent to the answer *or to another
   distractor*; every token must be in the palette at that puzzle's level.
+- automata-regex golf (`golf.test.ts`): every solution matches its left list and
+  none of its right list, and every puzzle has a solution using only the symbols
+  met by its station, including that station's new one.
+- automata-regex "Build this" (`exercises.test.ts`): same checks as the bank, plus
+  stars in non-decreasing order.
 - automata-regex: every `accept` string must really match the reference regex,
   every `reject` string must really not, and the examples must actually pin the
   language down (a puzzle that "accept everything" would pass is not a puzzle).
@@ -87,9 +93,12 @@ python deploy.py cmd-deploy --app lambdalab --force
 
 ## Don't
 
-- Don't add regex features beyond union/concat/star/+/?/ε/∅. Backreferences and
-  lookahead take you *outside* the regular languages, and the boundary is the
-  lesson.
+- Don't add regex features beyond union/concat/star/+/?/ε/∅ to the theory regex
+  (`lib/automata/regexParse.ts`). Backreferences and lookahead take you *outside*
+  the regular languages, and the boundary is the lesson. The practical regex of
+  Pattern golf (`[]`, `.`, `{}`, anchors) lives apart in `lib/coreRegex/`: every
+  symbol there is a shorthand for a theory regex, and it refuses backreferences,
+  lookaround and the other flavor-specific extras with a message.
 - Don't grade an automaton by running the test strings. Passing the visible
   examples is easy and teaches nothing; grade against the language.
 - Don't replace a counterexample with a red cross.
