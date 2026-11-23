@@ -17,6 +17,11 @@
  *
  * The patterns are the core every regex flavor shares (`lib/coreRegex`), so the
  * game can say "regular expression" with no qualifier.
+ *
+ * LAST AUDIT (`golf.audit.test.ts`, 2026-11-23): every puzzle to depth 5, and
+ * g-grey and g-q-without-u to depth 6 — no pattern that short beats par, or
+ * reaches it without the station's symbol. A par longer than the depth is a claim
+ * checked that far. Re-run the audit before changing a list.
  */
 import type { CoreSymbol } from '../../lib/coreRegex';
 
@@ -173,7 +178,7 @@ export const GOLF_PUZZLES: GolfPuzzle[] = [
     station: 3,
     title: 'Grey or gray',
     match: ['grey', 'gray', 'greyhound', 'grayscale'],
-    reject: ['grew', 'gory', 'groan', 'gyre', 'pray', 'array'],
+    reject: ['grew', 'gory', 'groan', 'gyre', 'pray', 'array', 'gruyere', 'key', 'monkey', 'grab', 'grass'],
     solutions: ['gr[ae]y'],
   },
 
@@ -351,7 +356,7 @@ export const GOLF_PUZZLES: GolfPuzzle[] = [
     station: 12,
     title: 'Q without U',
     match: ['qi', 'qwerty', 'burqa', 'niqab', 'iraqi'],
-    reject: ['queen', 'quiz', 'squid', 'aqua', 'quote'],
+    reject: ['queen', 'quiz', 'squid', 'aqua', 'quote', 'square', 'liquid', 'require'],
     solutions: ['q[^u]'],
   },
 ];
