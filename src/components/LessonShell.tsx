@@ -13,6 +13,7 @@
  * A lesson component supplies the hook and the activities; the shell does the
  * rest, so no lesson has to reinvent progress tracking or the resource list.
  */
+import { resetWithUndo } from '../core/reset-undo';
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { Lesson } from '../core/types';
@@ -78,12 +79,7 @@ export function LessonShell({ lesson, hook, children, solvedAt }: LessonShellPro
               <Button
                 variant="danger"
                 className="w-full !py-1.5 !text-xs"
-                onClick={() => {
-                  if (confirm(`Reset all your progress in "${lesson.title}"? This cannot be undone.`)) {
-                    resetLesson(lesson.id);
-                    setViewing(1);
-                  }
-                }}
+                onClick={() => resetWithUndo(() => resetLesson(lesson.id), `Progress in “${lesson.title}” reset`, () => setViewing(1))}
               >
                 Reset this lesson
               </Button>
