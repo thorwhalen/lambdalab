@@ -60,6 +60,8 @@ interface ProgressStore extends Progress {
   markSeen: (lessonId: string, sectionId: string) => void;
   resetLesson: (lessonId: string) => void;
   resetAll: () => void;
+  /** Put lessons back exactly as they were (the Undo of a reset). */
+  restoreLessons: (lessons: Progress['lessons']) => void;
 }
 
 export const useProgress = create<ProgressStore>()(
@@ -136,6 +138,7 @@ export const useProgress = create<ProgressStore>()(
         set((s) => ({ lessons: { ...s.lessons, [lessonId]: emptyLesson() } })),
 
       resetAll: () => set({ lessons: {} }),
+      restoreLessons: (lessons) => set({ lessons }),
     }),
     { name: STORAGE_KEY },
   ),

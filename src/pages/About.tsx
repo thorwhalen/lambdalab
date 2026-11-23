@@ -1,4 +1,5 @@
 /** What this is, who it is for, and the principles it is built on. */
+import { resetWithUndo } from '../core/reset-undo';
 import { useProgress } from '../core/progress';
 import { Button } from '../components/ui';
 
@@ -77,11 +78,7 @@ export function About() {
         <div className="mt-5 border-t border-ink-700 pt-4">
           <Button
             variant="danger"
-            onClick={() => {
-              if (confirm('Erase all progress across every lesson? This cannot be undone.')) {
-                resetAll();
-              }
-            }}
+            onClick={() => resetWithUndo(resetAll, 'All your progress erased')}
           >
             Erase all my progress
           </Button>

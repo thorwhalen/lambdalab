@@ -4,6 +4,8 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import './styles.css';
+import 'undo-toast/styles.css';
+import { UndoToast } from 'undo-toast/react';
 
 // enlace serves the SPA at /lambdalab/ in production and Vite serves it at / in
 // dev; import.meta.env.BASE_URL is the single source of truth for both.
@@ -13,6 +15,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter basename={basename}>
       <App />
+      <UndoToast />
     </BrowserRouter>
   </StrictMode>,
 );
