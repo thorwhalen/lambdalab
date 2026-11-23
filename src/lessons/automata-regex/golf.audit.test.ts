@@ -4,7 +4,7 @@
  *     GOLF_AUDIT=5 npx vitest run golf.audit      (GOLF_ONLY=g-cat for one puzzle)
  *
  * For every puzzle, two exhaustive searches up to GOLF_AUDIT characters:
- *   1. par is honest: nothing shorter than par sorts the lists, with the symbols met so far;
+ *   1. par holds: nothing shorter than par, up to the depth, sorts the lists with the symbols met so far;
  *   2. the station's symbol is needed: without it, nothing as short as par does.
  * Skipped unless GOLF_AUDIT is set, because depth 6 takes minutes. `golf.test.ts`
  * runs the same searches at depth 3 every time.

@@ -3,7 +3,8 @@
  *
  * Tapping a palette symbol inserts it AT THE CURSOR (not at the end), so a
  * learner on a tablet can tap `[ ]` and then fill it: paired symbols put the
- * caret between the brackets. ⌫ deletes before the cursor, or the selection.
+ * caret between the brackets, or wrap a selection in them. ⌫ deletes before the
+ * cursor, or the selection.
  * The tapped symbol's meaning is shown under the palette, because a tooltip
  * never appears under a finger.
  *
@@ -61,8 +62,17 @@ export function PatternInput({
 
   const insert = (sym: PaletteSymbol) => {
     const [start, end] = selection();
-    caretAfter.current = start + (sym.caret ?? sym.insert.length);
-    onChange(value.slice(0, start) + sym.insert + value.slice(end));
+    if (start < end && sym.caret !== undefined) {
+      // A pair around a selection wraps it: select "ha", tap ( ), get "(ha)".
+      const open = sym.insert.slice(0, sym.caret);
+      const close = sym.insert.slice(sym.caret);
+      const inner = value.slice(start, end);
+      caretAfter.current = start + open.length + inner.length + close.length;
+      onChange(value.slice(0, start) + open + inner + close + value.slice(end));
+    } else {
+      caretAfter.current = start + (sym.caret ?? sym.insert.length);
+      onChange(value.slice(0, start) + sym.insert + value.slice(end));
+    }
     setGloss(`${sym.label}  ${sym.gloss}`);
   };
 

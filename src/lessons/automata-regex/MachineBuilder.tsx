@@ -38,6 +38,7 @@ import {
   MAX_LEVEL,
   boardTotal,
   solveLevel,
+  solvedLanguage,
   type LanguagePuzzle,
 } from './content';
 
@@ -152,7 +153,7 @@ export function MachineBuilder({ level }: { level: number }) {
       const { total, solved } = boardTotal(solvedMap, puzzle.id, pts);
       void board.submit(total, { solved });
 
-      const up = checkAdvance(LESSON_ID, puzzle.level, LADDER[puzzle.level - 1].toAdvance, solveLevel, MAX_LEVEL);
+      const up = checkAdvance(LESSON_ID, puzzle.level, LADDER[puzzle.level - 1].toAdvance, solveLevel, MAX_LEVEL, solvedLanguage);
       if (up) setUnlocked(up);
     } else {
       setWrong({ counterexample: eq.counterexample, weAccept: eq.acceptedBy === 'a' });

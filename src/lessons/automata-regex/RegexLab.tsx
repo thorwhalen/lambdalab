@@ -31,6 +31,7 @@ import {
   REGEX_PAR,
   boardTotal,
   solveLevel,
+  solvedLanguage,
 } from './content';
 
 const LESSON_ID = 'automata-regex';
@@ -126,7 +127,7 @@ export function RegexLab({ level }: { level: number }) {
     const { total, solved } = boardTotal(solvedMap, `re-${puzzle.id}`, pts);
     void board.submit(total, { solved });
 
-    const up = checkAdvance(LESSON_ID, puzzle.level, LADDER[puzzle.level - 1].toAdvance, solveLevel, MAX_LEVEL);
+    const up = checkAdvance(LESSON_ID, puzzle.level, LADDER[puzzle.level - 1].toAdvance, solveLevel, MAX_LEVEL, solvedLanguage);
     if (up) setUnlocked(up);
   };
 

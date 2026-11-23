@@ -11,7 +11,7 @@ import { Aha, Panel } from '../../components/ui';
 import { Activity, LessonShell } from '../../components/LessonShell';
 import { NO_SOLVES, useProgress } from '../../core/progress';
 import type { Lesson } from '../../core/types';
-import { LADDER, LANGUAGE_PUZZLES, solveLevel } from './content';
+import { LADDER, LANGUAGE_PUZZLES, solveLevel, solvedLanguage } from './content';
 import { RESOURCES } from './resources';
 import { MachineBuilder } from './MachineBuilder';
 import { RegexLab } from './RegexLab';
@@ -60,8 +60,9 @@ function Hook() {
 export function AutomataPage() {
   const solved = useProgress((s) => s.lessons['automata-regex']?.solved ?? NO_SOLVES);
 
-  // Builder and regex solves both count toward the rung they belong to; golf has its own path.
-  const solvedAt = (level: number) => Object.keys(solved).filter((key) => solveLevel(key) === level).length;
+  // A language counts once toward its rung, whether built or written; golf has its own path.
+  const solvedAt = (level: number) =>
+    new Set(Object.keys(solved).filter((key) => solveLevel(key) === level).map(solvedLanguage)).size;
 
   const wall = LANGUAGE_PUZZLES.find((p) => p.impossible);
 

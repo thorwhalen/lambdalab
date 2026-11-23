@@ -9,8 +9,9 @@
  * Two things make it teach rather than merely test:
  *   - the PATH: one new symbol per station (`golf.ts`), each puzzle solvable with
  *     the symbols met so far, the palette showing exactly those, and an
- *     exhaustive search (`golfSearch.ts`) proving par is honest and the new
- *     symbol is needed;
+ *     exhaustive search (`golfSearch.ts`) checking that no pattern up to the
+ *     audited length beats par or reaches it without the new symbol (the depth
+ *     last audited is recorded in `golf.ts`);
  *   - the EVIDENCE: every word shows, live, whether the pattern found something
  *     in it and WHERE (the matched part is highlighted), so "it found cat inside
  *     concatenate" is visible, not explained.
@@ -66,11 +67,11 @@ const paletteFor = (symbols: CoreSymbol[]): PaletteSymbol[] =>
     gloss: CORE_SYMBOLS.find((c) => c.symbol === s)?.gloss ?? '',
   }));
 
-type Finder = (word: string) => { index: number; length: number } | null;
+type Match = { index: number; length: number } | null;
 
-function Word({ word, want, find }: { word: string; want: boolean; find: Finder | null }) {
-  const m = find ? find(word) : null;
-  const ok = find ? (m !== null) === want : null;
+/** One word, with where the pattern matched it (`undefined` while there is no valid pattern). */
+function Word({ word, want, m }: { word: string; want: boolean; m: Match | undefined }) {
+  const ok = m === undefined ? null : (m !== null) === want;
   const tone = ok === null ? 'text-ink-300' : ok ? 'text-[var(--color-good)]' : 'text-[var(--color-bad)]';
   return (
     <li className={`flex items-baseline gap-2 font-mono ${tone}`}>
@@ -117,9 +118,15 @@ export function PatternGolf() {
   const solvedBefore = !!solvedMap[solveKey(puzzle.id)];
 
   const check = useMemo(() => (src ? checkCore(src) : null), [src]);
-  const find = check?.ok ? check.find : null;
-  const allRight = !!check?.ok && puzzle.match.every((w) => check.test(w)) && puzzle.reject.every((w) => !check.test(w));
-  const emptyMatch = !!find && [...puzzle.match, ...puzzle.reject].some((w) => find(w)?.length === 0);
+  // Each word is run once per pattern; every render reads the same results.
+  const matches = useMemo(
+    () => (check?.ok ? new Map([...puzzle.match, ...puzzle.reject].map((w) => [w, check.find(w)] as const)) : null),
+    [check, puzzle],
+  );
+  const find = matches !== null;
+  const allRight =
+    matches !== null && puzzle.match.every((w) => matches.get(w) !== null) && puzzle.reject.every((w) => matches.get(w) === null);
+  const emptyMatch = matches !== null && [...matches.values()].some((m) => m?.length === 0);
 
   const go = (i: number) => {
     setIndex(i);
@@ -187,7 +194,7 @@ export function PatternGolf() {
               <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--color-good)]">Match all of these</p>
               <ul className="flex flex-col gap-1">
                 {puzzle.match.map((w) => (
-                  <Word key={w} word={w} want find={find} />
+                  <Word key={w} word={w} want m={matches?.get(w)} />
                 ))}
               </ul>
             </div>
@@ -195,7 +202,7 @@ export function PatternGolf() {
               <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--color-bad)]">…and none of these</p>
               <ul className="flex flex-col gap-1">
                 {puzzle.reject.map((w) => (
-                  <Word key={w} word={w} want={false} find={find} />
+                  <Word key={w} word={w} want={false} m={matches?.get(w)} />
                 ))}
               </ul>
             </div>

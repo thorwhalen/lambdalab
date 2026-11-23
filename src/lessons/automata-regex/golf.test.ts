@@ -7,7 +7,8 @@
  *      uses that station's new symbol — so the path never asks for a symbol early,
  *      and every station's puzzles really exercise its symbol.
  *   4. Every station has at least two puzzles, so each symbol lands before the next.
- *   5. Par is honest and the new symbol is needed, to 3 characters (deeper: golf.audit.test.ts).
+ *   5. Par holds and the new symbol is needed, against every pattern of 3 characters or fewer
+ *      (deeper: golf.audit.test.ts; the depth last audited is recorded in golf.ts).
  *   6. The lists are not degenerate: the left list is non-empty, and the right list
  *      is non-empty (otherwise "." or "" would win every hole).
  */

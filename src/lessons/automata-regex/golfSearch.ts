@@ -1,6 +1,8 @@
 /**
- * Exhaustive search for short golf solutions: is par honest, and does a puzzle
- * really need its station's symbol?
+ * Exhaustive search for short golf solutions: does par hold, and does a puzzle
+ * really need its station's symbol? Up to a length only: the search is
+ * exponential, so a par longer than the audited depth is a claim checked that far
+ * and no further.
  *
  * Golf rewards shortcuts, so a hand-authored par is a claim, and the first bank
  * got it wrong on half its holes (`r.y` beat `gr[ae]y`, `y$` beat `ly$`). This

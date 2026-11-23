@@ -140,3 +140,11 @@ describe('solve keys: one activity per prefix', () => {
     expect(boardTotal(solved, 'a2-even-a', 1)).toEqual({ total: 101, solved: 2 });
   });
 });
+
+describe('a language counts once toward its rung', () => {
+  it('maps builder and regex solves of one language to the same identity', async () => {
+    const { solvedLanguage } = await import('./content');
+    expect(solvedLanguage('re-a2-even-a')).toBe(solvedLanguage('a2-even-a'));
+    expect(solvedLanguage('golf-g-cat')).toBe('golf-g-cat');
+  });
+});

@@ -77,6 +77,9 @@ describe('checkCore refuses what is not core, and says why', () => {
     ['é', /ASCII/],
     [')', /closes nothing/],
     [')a', /closes nothing/],
+    ['a\\-b', /different flavors/],
+    ['('.repeat(40) + 'a' + ')'.repeat(40), /nested/],
+    ['((a?){100}){100}', /too big/],
   ])('%s', (src, why) => {
     const r = checkCore(src);
     expect(r.ok).toBe(false);
@@ -123,13 +126,21 @@ describe('matching is search: a match anywhere in the word counts', () => {
 });
 
 describe('the matcher is linear: no pattern freezes the page', () => {
-  it.each(['((a|a)*)*z', '((.*)*)*z', '(a*)*b', '.*.*.*.*.*.*.*.*z', '(x+x+)+y'])('%s on a long word', (src) => {
+  it.each([
+    '((a|a)*)*z',
+    '((.*)*)*z',
+    '(a*)*b',
+    '.*.*.*.*.*.*.*.*z',
+    '(x+x+)+y',
+    '((a?){30}){9}z',
+    '(.?.?.?.?.?){40}z',
+  ])('%s on a long word', (src) => {
     const r = checkCore(src);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     const t0 = performance.now();
     for (const w of ['a'.repeat(30), 'x'.repeat(30), 'abcdefghijklmnopqrstuvwxyzabcd']) r.test(w);
-    expect(performance.now() - t0).toBeLessThan(1000);
+    expect(performance.now() - t0).toBeLessThan(300);
   });
 });
 
@@ -164,6 +175,19 @@ describe('agrees with JavaScript on WHETHER a word matches (random patterns)', (
       const js = new RegExp(src);
       for (const w of words) {
         expect(r.test(w), `${src} on "${w}"`).toBe(js.test(w));
+        // Leftmost-longest, by brute force: the first start with any full match, then its longest end.
+        const whole = new RegExp(`^(?:${src})$`);
+        let want: { index: number; length: number } | null = null;
+        for (let i = 0; i <= w.length && !want; i++) {
+          for (let j = w.length; j >= i; j--) {
+            // Anchors inside the pattern refer to the word, so test the slice with them honoured.
+            if (whole.test(w.slice(i, j)) && (!src.startsWith('^') || i === 0) && (!src.endsWith('$') || j === w.length)) {
+              want = { index: i, length: j - i };
+              break;
+            }
+          }
+        }
+        if (!/[\^$]/.test(src.slice(1, -1))) expect(r.find(w), `${src} on "${w}"`).toEqual(want);
         checked++;
       }
     }

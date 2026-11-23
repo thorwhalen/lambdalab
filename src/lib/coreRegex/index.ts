@@ -106,12 +106,14 @@ export type CoreCheck =
 /** The largest count every flavor accepts (POSIX's RE_DUP_MAX floor). */
 export const MAX_COUNT = 255;
 /** A pattern whose machine has more states than this is refused as too big to run. */
-const MAX_STATES = 4000;
+const MAX_STATES = 1000;
+/** Deeper nesting than this is refused rather than risking the parser's stack. */
+const MAX_DEPTH = 30;
 
 /** Characters that mean something outside brackets. */
 const SPECIAL = new Set(['.', '[', ']', '(', ')', '*', '+', '?', '{', '}', '|', '^', '$', '\\']);
-/** Characters that may follow a backslash outside brackets. */
-const ESCAPABLE = new Set([...SPECIAL, '-', '/']);
+/** Characters that may follow a backslash outside brackets: only the special ones (POSIX leaves \\- and \\/ undefined). */
+const ESCAPABLE = SPECIAL;
 
 /** Why a backslash-letter is refused, by letter. Unlisted letters get a generic message. */
 const SHORTHANDS: Record<string, string> = {
@@ -218,6 +220,7 @@ function parse(src: string): { node: Node; symbols: Set<CoreSymbol> } {
       const open = i;
       i++;
       depth++;
+      if (depth > MAX_DEPTH) fail(`Groups nested more than ${MAX_DEPTH} deep are too many to run here.`, open);
       const inner = alt();
       depth--;
       if (peek() !== ')') fail('This ( is not closed yet. Add a ).', open, true);
@@ -425,39 +428,49 @@ function compile(root: Node): { states: State[]; start: number } {
   return { states, start };
 }
 
-/** The leftmost-longest match: try each start; at each, run the state set to the end, remembering the last accept. */
-function makeFind(states: State[], start: number): (word: string) => Span | null {
-  return (word) => {
+/**
+ * One pass over the word, a set of states at a time (Pike's VM): each live state
+ * remembers the earliest position its thread started at. That gives the
+ * leftmost-longest match in O(word × states), and `test` stops at the first accept.
+ */
+function makeRunner(states: State[], start: number): { find: (w: string) => Span | null; test: (w: string) => boolean } {
+  const run = (word: string, firstOnly: boolean): Span | null => {
     const n = word.length;
-    const closure = (set: Set<number>, s: number, pos: number) => {
+    // state -> earliest start; a state already present keeps its (earlier) start.
+    const closure = (set: Map<number, number>, s: number, pos: number, from: number) => {
       if (set.has(s)) return;
-      set.add(s);
+      set.set(s, from);
       const st = states[s]!;
       if (st.k === 'split') {
-        closure(set, st.a, pos);
-        closure(set, st.b, pos);
-      } else if (st.k === 'bol' && pos === 0) closure(set, st.out, pos);
-      else if (st.k === 'eol' && pos === n) closure(set, st.out, pos);
+        closure(set, st.a, pos, from);
+        closure(set, st.b, pos, from);
+      } else if (st.k === 'bol' && pos === 0) closure(set, st.out, pos, from);
+      else if (st.k === 'eol' && pos === n) closure(set, st.out, pos, from);
     };
-    const accepts = (set: Set<number>) => [...set].some((s) => states[s]!.k === 'match');
-
-    for (let from = 0; from <= n; from++) {
-      let current = new Set<number>();
-      closure(current, start, from);
-      let last = accepts(current) ? from : -1;
-      for (let pos = from; pos < n && current.size; pos++) {
-        const next = new Set<number>();
-        for (const s of current) {
-          const st = states[s]!;
-          if (st.k === 'char' && st.test(word[pos]!)) closure(next, st.out, pos + 1);
+    let threads = new Map<number, number>();
+    let best: Span | null = null;
+    for (let pos = 0; pos <= n; pos++) {
+      if (best === null) closure(threads, start, pos, pos);
+      for (const [s, from] of threads) {
+        if (states[s]!.k !== 'match') continue;
+        if (best === null || from < best.index || (from === best.index && pos - from > best.length)) {
+          best = { index: from, length: pos - from };
+          if (firstOnly) return best;
         }
-        current = next;
-        if (accepts(current)) last = pos + 1;
       }
-      if (last >= 0) return { index: from, length: last - from };
+      if (best !== null) for (const [s, from] of threads) if (from > best.index) threads.delete(s);
+      if (pos === n || (best !== null && threads.size === 0)) break;
+      const next = new Map<number, number>();
+      // Earliest starts first, so a state reached twice keeps the leftmost thread.
+      for (const [s, from] of [...threads].sort((x, y) => x[1] - y[1])) {
+        const st = states[s]!;
+        if (st.k === 'char' && st.test(word[pos]!)) closure(next, st.out, pos + 1, from);
+      }
+      threads = next;
     }
-    return null;
+    return best;
   };
+  return { find: (w) => run(w, false), test: (w) => run(w, true) !== null };
 }
 
 /**
@@ -468,8 +481,8 @@ export function checkCore(src: string): CoreCheck {
   try {
     const { node, symbols } = parse(src);
     const { states, start } = compile(node);
-    const find = makeFind(states, start);
-    return { ok: true, symbols, find, test: (w) => find(w) !== null };
+    const { find, test } = makeRunner(states, start);
+    return { ok: true, symbols, find, test };
   } catch (e) {
     if (e instanceof CoreError) return { ok: false, message: e.message, at: e.at, incomplete: e.incomplete };
     throw e;

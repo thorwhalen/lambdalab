@@ -459,13 +459,18 @@ export function solveKind(key: string): SolveKind {
 }
 
 /**
- * The ladder rung a solve counts toward. Builder and regex solves of the same
- * language both count (the page header always counted them so); golf solves
- * count toward none, since golf has its own path.
+ * The ladder rung a solve counts toward; golf solves count toward none, since
+ * golf has its own path. A language solved both as a machine and as a pattern
+ * counts once (pass `solvedLanguage` as the identity).
  */
 export function solveLevel(key: string): number {
   const kind = solveKind(key);
   return kind === 'golf' ? 0 : puzzleLevel(kind === 'regex' ? key.slice(3) : key);
+}
+
+/** What a solve is a solve OF: the builder and RegexLab solving one language count once toward a rung. */
+export function solvedLanguage(key: string): string {
+  return solveKind(key) === 'regex' ? key.slice(3) : key;
 }
 
 /**
