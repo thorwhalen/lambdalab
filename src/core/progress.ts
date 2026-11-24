@@ -35,6 +35,44 @@ const emptyLesson = (): LessonProgress => ({
   seen: [],
 });
 
+/**
+ * Put `before` (the progress a reset removed) back under `now` (the progress made since).
+ * The Undo of a reset may come long after it (its toast stays until closed), so it must
+ * not take away what was done in between: a puzzle solved on both sides keeps the better
+ * score, the first solve time and every attempt; a lesson keeps its higher rung and every
+ * section seen.
+ */
+export function mergeLessons(
+  before: Progress['lessons'],
+  now: Progress['lessons'],
+): Progress['lessons'] {
+  const out: Progress['lessons'] = { ...before };
+  for (const [id, cur] of Object.entries(now)) {
+    const old = before[id];
+    if (!old) {
+      out[id] = cur;
+      continue;
+    }
+    const solved: Record<string, PuzzleRecord> = { ...old.solved };
+    for (const [pid, rec] of Object.entries(cur.solved)) {
+      const prev = old.solved[pid];
+      solved[pid] = prev
+        ? {
+            best: Math.max(prev.best, rec.best),
+            attempts: prev.attempts + rec.attempts,
+            solvedAt: Math.min(prev.solvedAt, rec.solvedAt),
+          }
+        : rec;
+    }
+    out[id] = {
+      levelReached: Math.max(old.levelReached, cur.levelReached),
+      solved,
+      seen: [...new Set([...old.seen, ...cur.seen])],
+    };
+  }
+  return out;
+}
+
 interface ProgressStore extends Progress {
   setNickname: (name: string) => void;
   lesson: (lessonId: string) => LessonProgress;
@@ -60,8 +98,10 @@ interface ProgressStore extends Progress {
   markSeen: (lessonId: string, sectionId: string) => void;
   resetLesson: (lessonId: string) => void;
   resetAll: () => void;
-  /** Put lessons back exactly as they were (the Undo of a reset). */
+  /** Put lessons back exactly as they were. */
   restoreLessons: (lessons: Progress['lessons']) => void;
+  /** The Undo of a reset: bring back what it removed, keeping progress made since (`mergeLessons`). */
+  undoReset: (before: Progress['lessons']) => void;
 }
 
 export const useProgress = create<ProgressStore>()(
@@ -139,6 +179,7 @@ export const useProgress = create<ProgressStore>()(
 
       resetAll: () => set({ lessons: {} }),
       restoreLessons: (lessons) => set({ lessons }),
+      undoReset: (before) => set((s) => ({ lessons: mergeLessons(before, s.lessons) })),
     }),
     { name: STORAGE_KEY },
   ),

@@ -1,7 +1,8 @@
 /**
  * A reset acts at once and offers one Undo that puts the progress back exactly as it was
  * (undo-toast decides how long the offer stays), instead of a "This cannot be undone" confirm:
- * it can be undone, so asking first only slows the person down.
+ * it can be undone, so asking first only slows the person down. The toast may stay a long
+ * time, so Undo keeps any progress made after the reset (`mergeLessons`).
  */
 import { advise, offerUndo } from 'undo-toast';
 import { useProgress } from './progress';
@@ -15,7 +16,7 @@ export function resetWithUndo(reset: () => void, message: string, after?: () => 
     message,
     advice: advise('delete-work'),
     undo: () => {
-      useProgress.getState().restoreLessons(before);
+      useProgress.getState().undoReset(before);
       return true;
     },
   });
